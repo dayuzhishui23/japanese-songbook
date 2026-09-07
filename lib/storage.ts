@@ -14,6 +14,9 @@ export type SongRecord = {
   rawLyrics: string;
   lines: LyricLine[];
   updatedAt: string;
+  source?: 'netease';
+  sourceId?: string;
+  duration?: number;
 };
 
 export type SongLibrary = {
@@ -92,7 +95,11 @@ function isSong(value: unknown): value is SongRecord {
     typeof song.rawLyrics === 'string' &&
     Array.isArray(song.lines) &&
     song.lines.every(isLyricLine) &&
-    typeof song.updatedAt === 'string'
+    typeof song.updatedAt === 'string' &&
+    (song.source === undefined || song.source === 'netease') &&
+    (song.sourceId === undefined || typeof song.sourceId === 'string') &&
+    (song.duration === undefined ||
+      (typeof song.duration === 'number' && Number.isFinite(song.duration)))
   );
 }
 

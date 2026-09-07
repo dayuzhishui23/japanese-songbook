@@ -280,6 +280,25 @@ export function getLinePlaybackRange(
   return { start, end };
 }
 
+export function activeLyricIndexAtTime(
+  lines: LyricLine[],
+  seconds: number,
+): number | null {
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  let active: number | null = null;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (
+      !line?.isBreak &&
+      typeof line.startTime === 'number' &&
+      line.startTime <= seconds
+    ) {
+      active = index;
+    }
+  }
+  return active;
+}
+
 export function adjacentLyricIndex(
   lines: LyricLine[],
   currentIndex: number | null,

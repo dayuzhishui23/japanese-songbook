@@ -93,6 +93,19 @@ void test('saves and restores a multi-song library', () => {
   assert.deepEqual(loadSongLibrary(storage), library);
 });
 
+void test('saves and restores online song metadata', () => {
+  const storage = fakeStorage();
+  const library = createDefaultLibrary();
+  library.songs[0] = {
+    ...library.songs[0]!,
+    source: 'netease',
+    sourceId: '536622304',
+    duration: 256,
+  };
+  saveSongLibrary(storage, library);
+  assert.deepEqual(loadSongLibrary(storage), library);
+});
+
 void test('migrates saved Lemon lyrics from version 1', () => {
   const storage = fakeStorage({
     [LEGACY_LYRICS_STORAGE_KEY]: JSON.stringify({

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  activeLyricIndexAtTime,
   adjacentLyricIndex,
   getLinePlaybackRange,
   lyricLinesToRawText,
@@ -116,6 +117,26 @@ void test('moves between lyric lines while skipping stanza breaks', () => {
   assert.equal(adjacentLyricIndex(lines, 0, 1), 2);
   assert.equal(adjacentLyricIndex(lines, 2, -1), 0);
   assert.equal(adjacentLyricIndex(lines, 2, 1), null);
+});
+
+void test('finds the active timed lyric during playback', () => {
+  const lines: LyricLine[] = [
+    {
+      japanese: '一', reading: '', romaji: '', chinesePhonetic: '',
+      isBreak: false, startTime: 2,
+    },
+    {
+      japanese: '', reading: '', romaji: '', chinesePhonetic: '',
+      isBreak: true,
+    },
+    {
+      japanese: '二', reading: '', romaji: '', chinesePhonetic: '',
+      isBreak: false, startTime: 5,
+    },
+  ];
+  assert.equal(activeLyricIndexAtTime(lines, 1.9), null);
+  assert.equal(activeLyricIndexAtTime(lines, 2), 0);
+  assert.equal(activeLyricIndexAtTime(lines, 6), 2);
 });
 
 void test('sets a rounded lyric start without changing other lines', () => {
