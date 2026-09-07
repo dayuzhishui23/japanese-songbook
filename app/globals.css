@@ -71,6 +71,7 @@
   html {
     @apply font-sans;
     background: var(--background);
+    scroll-behavior: smooth;
   }
 
   body {
@@ -81,5 +82,46 @@
   ::selection {
     background: rgb(82 107 79 / 28%);
     color: #283329;
+  }
+}
+
+@keyframes song-view-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.4rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.song-view-enter {
+  animation: song-view-in 220ms ease-out both;
+}
+
+.panel-enter {
+  animation: panel-in 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .song-view-enter,
+  .panel-enter {
+    animation: none;
   }
 }

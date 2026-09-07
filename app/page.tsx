@@ -492,28 +492,37 @@ export default function Home() {
         />
 
         {activeSong ? (
-          isEditing ? (
-            <LyricsEditor
-              error={error}
-              isGenerating={isGenerating}
-              onLyricsChange={setRawLyrics}
-              onSubmit={handleSubmit}
-              rawLyrics={rawLyrics}
-              songTitle={activeSong.title}
-            />
-          ) : (
-            <LyricsReader
-              corrections={library.phoneticCorrections}
-              key={activeSong.id}
-              lines={activeSong.lines}
-              onDeleteCorrection={deletePhoneticCorrection}
-              onEdit={() => setIsEditing(true)}
-              onSave={saveEditedLines}
-              onSaveCorrection={savePhoneticCorrection}
-              onSaveWithCorrections={saveLinesAndCorrections}
-              song={activeSong}
-            />
-          )
+          <div className="song-view-enter" key={activeSong.id}>
+            <section className="mb-4 px-1" aria-label="当前歌曲">
+              <h2 className="truncate text-2xl font-semibold tracking-[-0.025em] text-foreground sm:text-3xl">
+                {activeSong.title}
+              </h2>
+              <p className="mt-1 truncate text-sm text-foreground/52 sm:text-base">
+                {activeSong.artist}
+              </p>
+            </section>
+            {isEditing ? (
+              <LyricsEditor
+                error={error}
+                isGenerating={isGenerating}
+                onLyricsChange={setRawLyrics}
+                onSubmit={handleSubmit}
+                rawLyrics={rawLyrics}
+                songTitle={activeSong.title}
+              />
+            ) : (
+              <LyricsReader
+                corrections={library.phoneticCorrections}
+                lines={activeSong.lines}
+                onDeleteCorrection={deletePhoneticCorrection}
+                onEdit={() => setIsEditing(true)}
+                onSave={saveEditedLines}
+                onSaveCorrection={savePhoneticCorrection}
+                onSaveWithCorrections={saveLinesAndCorrections}
+                song={activeSong}
+              />
+            )}
+          </div>
         ) : (
           <EmptyLibrary onChoose={addOnlineSong} onManual={addManualSong} />
         )}
@@ -541,10 +550,10 @@ function SongShelf({
             <button
               key={song.id}
               aria-current={active ? 'true' : undefined}
-              className={`min-w-40 rounded-xl border px-4 py-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+              className={`min-w-40 rounded-xl border px-4 py-3 text-left transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                 active
-                  ? 'border-primary/55 bg-primary/12'
-                  : 'border-foreground/10 bg-card hover:border-foreground/24'
+                  ? 'border-primary/55 bg-primary/12 shadow-sm'
+                  : 'border-foreground/10 bg-card hover:-translate-y-0.5 hover:border-foreground/24'
               }`}
               onClick={() => onSelect(song)}
               type="button"
@@ -1578,7 +1587,7 @@ function LyricsReader({
       </div>
       {showAudioSync && !isEditingLines ? (
         <div
-          className={`rounded-2xl border border-primary/20 bg-card/95 p-4 shadow-[0_20px_70px_rgb(52_69_54/22%)] backdrop-blur sm:mb-4 sm:bg-primary/[0.06] sm:p-5 sm:shadow-none ${
+          className={`panel-enter rounded-2xl border border-primary/20 bg-card/95 p-4 shadow-[0_20px_70px_rgb(52_69_54/22%)] backdrop-blur sm:mb-4 sm:bg-primary/[0.06] sm:p-5 sm:shadow-none ${
             audioUrl ? 'fixed inset-x-3 bottom-3 z-40 sm:static' : 'mb-4'
           }`}
         >
@@ -1669,7 +1678,7 @@ function LyricsReader({
             <article
               key={index}
               id={`lyric-line-${index}`}
-              className={`border-b border-foreground/[0.07] px-5 py-7 last:border-b-0 sm:px-8 ${
+              className={`border-b border-foreground/[0.07] px-5 py-7 transition-colors duration-300 last:border-b-0 sm:px-8 ${
                 showAudioSync && activeLineIndex === index
                   ? 'bg-primary/[0.07] ring-1 ring-inset ring-primary/30'
                   : ''
