@@ -162,8 +162,8 @@ export async function GET(request: Request) {
               version: 'original' as const,
             }
           : null;
-    if (knownSong && !songs.some((song) => song.id === knownSong.id)) {
-      songs.push(knownSong);
+    if (knownSong) {
+      songs = [knownSong, ...songs.filter((song) => song.id !== knownSong.id)];
     }
     const rankedSongs = [
       ...new Map(songs.map((song) => [song.id, song])).values(),
