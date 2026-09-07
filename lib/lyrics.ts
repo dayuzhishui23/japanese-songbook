@@ -144,6 +144,10 @@ async function getKuroshiro(): Promise<KuroshiroInstance> {
   return kuroshiroPromise;
 }
 
+export async function prepareLyricsConverter(): Promise<void> {
+  await getKuroshiro();
+}
+
 export function validateLyricsInput(rawLyrics: string): string {
   if (!rawLyrics.trim()) {
     throw new Error('请先粘贴日语歌词。');

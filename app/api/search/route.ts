@@ -8,6 +8,33 @@ const HEADERS = {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 };
 
+const COVER_PATTERN =
+  /\bcover\b|翻唱|翻自|カバー|歌ってみた|ピアノ|オルゴール|instrumental/iu;
+
+function compact(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, '');
+}
+
+function songVersion(title: string, artist: string): 'original' | 'cover' {
+  return COVER_PATTERN.test(`${title} ${artist}`) ? 'cover' : 'original';
+}
+
+function matchScore(song: OnlineSongResult, query: string): number {
+  const normalizedQuery = compact(query);
+  const title = compact(song.title);
+  const artist = compact(song.artist.split('/')[0] ?? '');
+  let score = song.version === 'original' ? 20 : 0;
+  if (normalizedQuery === title) score += 120;
+  else if (normalizedQuery.startsWith(title)) score += 100;
+  else if (normalizedQuery.includes(title)) score += 80;
+  else if (title.includes(normalizedQuery)) score += 60;
+  if (artist && normalizedQuery.includes(artist)) score += 30;
+  return score;
+}
+
 function cors(request: Request): Record<string, string> {
   const origin = request.headers.get('origin') ?? '';
   return origin === 'https://dayuzhishui23.github.io'
@@ -73,6 +100,13 @@ export async function GET(request: Request) {
             .filter(Boolean)
             .join(' / ') || '未知歌手',
         duration: typeof song.duration === 'number' ? song.duration / 1000 : 0,
+        version: songVersion(
+          song.name!.trim(),
+          song.artists
+            ?.map((artist) => artist.name?.trim())
+            .filter(Boolean)
+            .join(' / ') || '未知歌手',
+        ),
       }));
     if (!songs.length) {
       try {
@@ -94,6 +128,10 @@ export async function GET(request: Request) {
             title: song.name!.trim(),
             artist: song.artist?.filter(Boolean).join(' / ') || '未知歌手',
             duration: 0,
+            version: songVersion(
+              song.name!.trim(),
+              song.artist?.filter(Boolean).join(' / ') || '未知歌手',
+            ),
           }));
       } catch {
         // Keep the primary result so known-song fallbacks can still be used.
@@ -105,6 +143,7 @@ export async function GET(request: Request) {
           title: '日曜日の秘密',
           artist: 'CHiCO with HoneyWorks / 鎖那',
           duration: 303.92,
+          version: 'original' as const,
         }
       : /可愛くてごめん/u.test(query)
         ? {
@@ -112,6 +151,7 @@ export async function GET(request: Request) {
             title: '可愛くてごめん (feat. かぴ)',
             artist: 'HoneyWorks / かぴ',
             duration: 219.893,
+            version: 'original' as const,
           }
         : /lemon|レモン/iu.test(query)
           ? {
@@ -119,12 +159,25 @@ export async function GET(request: Request) {
               title: 'Lemon',
               artist: '米津玄師',
               duration: 256,
+              version: 'original' as const,
             }
           : null;
     if (knownSong && !songs.some((song) => song.id === knownSong.id)) {
-      songs.unshift(knownSong);
+      songs.push(knownSong);
     }
-    return Response.json({ songs }, { headers: cors(request) });
+    const rankedSongs = [
+      ...new Map(songs.map((song) => [song.id, song])).values(),
+    ].sort((a, b) => {
+      if (knownSong) {
+        if (a.id === knownSong.id) return -1;
+        if (b.id === knownSong.id) return 1;
+      }
+      return (
+        matchScore(b, searchQueries(query)[0]) -
+        matchScore(a, searchQueries(query)[0])
+      );
+    });
+    return Response.json({ songs: rankedSongs }, { headers: cors(request) });
   } catch {
     return Response.json(
       { error: '歌曲搜索暂时不可用，请稍后重试。', songs: [] },

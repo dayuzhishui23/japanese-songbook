@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  ExternalLink,
   FileUp,
   LoaderCircle,
   LockKeyhole,
@@ -51,15 +50,13 @@ import {
   lyricLinesToRawText,
   MAX_LYRICS_LENGTH,
   PHONETIC_RULES_VERSION,
+  prepareLyricsConverter,
   regenerateLyricLine,
   setLyricStartTime,
   type LyricLine,
 } from '@/lib/lyrics';
-import { normalizeReadingKey } from '@/lib/phonetic';
-import type {
-  OnlineSongResult,
-  TimedLyricLine,
-} from '@/lib/online-music';
+import { normalizeReadingKey, readingToChinese } from '@/lib/phonetic';
+import type { OnlineSongResult, TimedLyricLine } from '@/lib/online-music';
 import {
   createDefaultLibrary,
   loadSongLibrary,
@@ -85,12 +82,20 @@ type ModelContext = {
 };
 
 type SongDraft = Pick<SongRecord, 'title' | 'artist' | 'officialUrl' | 'mvUrl'>;
+type GenerationStage = 'lyrics' | 'dictionary' | 'phonetic';
+type SongChoiceHandler = (
+  song: OnlineSongResult,
+  onProgress: (stage: GenerationStage) => void,
+) => Promise<void>;
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024;
 const SITES_ORIGIN = 'https://lemon-lyrics-practice.dayuzhishui23.chatgpt.site';
 
 function apiUrl(path: string): string {
-  if (typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io')) {
+  if (
+    typeof window !== 'undefined' &&
+    window.location.hostname.endsWith('.github.io')
+  ) {
     return `${SITES_ORIGIN}${path}`;
   }
   return path;
@@ -230,10 +235,14 @@ export default function Home() {
     setError('');
   }
 
-  async function addOnlineSong(result: OnlineSongResult) {
+  async function addOnlineSong(
+    result: OnlineSongResult,
+    onProgress: (stage: GenerationStage) => void,
+  ) {
     setIsGenerating(true);
     setError('');
     try {
+      onProgress('lyrics');
       const response = await fetch(apiUrl(`/api/lyrics?id=${result.id}`));
       const payload = (await response.json()) as {
         error?: string;
@@ -243,6 +252,9 @@ export default function Home() {
       if (!response.ok || !payload.lyrics || !payload.timedLines?.length) {
         throw new Error(payload.error || '这首歌暂时没有可用歌词。');
       }
+      onProgress('dictionary');
+      await prepareLyricsConverter();
+      onProgress('phonetic');
       const converted = await convertLyrics(
         payload.lyrics,
         library.phoneticCorrections,
@@ -257,7 +269,8 @@ export default function Home() {
         (song) =>
           song.sourceId === result.id ||
           (!song.rawLyrics &&
-            song.title.toLocaleLowerCase() === result.title.toLocaleLowerCase() &&
+            song.title.toLocaleLowerCase() ===
+              result.title.toLocaleLowerCase() &&
             song.artist.includes(result.artist)),
       );
       const song: SongRecord = {
@@ -288,6 +301,27 @@ export default function Home() {
     } finally {
       setIsGenerating(false);
     }
+  }
+
+  function addManualSong(suggestedTitle: string) {
+    const song: SongRecord = {
+      id: createSongId(),
+      title: suggestedTitle.trim() || '未命名歌曲',
+      artist: '未知歌手',
+      officialUrl: '',
+      mvUrl: '',
+      rawLyrics: '',
+      lines: [],
+      updatedAt: '',
+    };
+    persist({
+      ...library,
+      activeSongId: song.id,
+      songs: [...library.songs, song],
+    });
+    setRawLyrics('');
+    setIsEditing(true);
+    setError('');
   }
 
   function updateSong(draft: SongDraft) {
@@ -343,6 +377,29 @@ export default function Home() {
     const updatedRawLyrics = lyricLinesToRawText(editedLines);
     persist({
       ...library,
+      songs: library.songs.map((song) =>
+        song.id === activeSong.id
+          ? {
+              ...song,
+              rawLyrics: updatedRawLyrics,
+              lines: editedLines,
+              updatedAt: new Date().toISOString(),
+            }
+          : song,
+      ),
+    });
+    setRawLyrics(updatedRawLyrics);
+  }
+
+  function saveLinesAndCorrections(
+    editedLines: LyricLine[],
+    phoneticCorrections: Record<string, string>,
+  ) {
+    if (!activeSong) return;
+    const updatedRawLyrics = lyricLinesToRawText(editedLines);
+    persist({
+      ...library,
+      phoneticCorrections,
       songs: library.songs.map((song) =>
         song.id === activeSong.id
           ? {
@@ -420,7 +477,10 @@ export default function Home() {
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <LibraryBackupDialog library={library} onImport={importLibrary} />
-            <OnlineSongSearchDialog onChoose={addOnlineSong} />
+            <OnlineSongSearchDialog
+              onChoose={addOnlineSong}
+              onManual={addManualSong}
+            />
           </div>
         </header>
 
@@ -456,12 +516,13 @@ export default function Home() {
                 onEdit={() => setIsEditing(true)}
                 onSave={saveEditedLines}
                 onSaveCorrection={savePhoneticCorrection}
+                onSaveWithCorrections={saveLinesAndCorrections}
                 song={activeSong}
               />
             )}
           </>
         ) : (
-          <EmptyLibrary onChoose={addOnlineSong} />
+          <EmptyLibrary onChoose={addOnlineSong} onManual={addManualSong} />
         )}
       </div>
     </main>
@@ -527,12 +588,6 @@ function SongHeader({
         <p className="mt-2 text-lg text-foreground/62">{song.artist}</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        {song.officialUrl ? (
-          <ExternalLinkButton href={song.officialUrl} label="歌曲资料" />
-        ) : null}
-        {song.mvUrl ? (
-          <ExternalLinkButton href={song.mvUrl} label="官方 MV" />
-        ) : null}
         <SongFormDialog initial={song} onSave={onUpdate} />
         <AlertDialog>
           <AlertDialogTrigger
@@ -562,19 +617,6 @@ function SongHeader({
   );
 }
 
-function ExternalLinkButton({ href, label }: { href: string; label: string }) {
-  return (
-    <a
-      className="inline-flex min-h-11 items-center gap-2 rounded-full border border-foreground/14 px-4 text-sm font-medium text-foreground/72 transition hover:border-primary/55 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      href={href}
-      rel="noreferrer"
-      target="_blank"
-    >
-      {label} <ExternalLink aria-hidden="true" className="size-4" />
-    </a>
-  );
-}
-
 function SongFormDialog({
   initial,
   onSave,
@@ -601,20 +643,15 @@ function SongFormDialog({
       open={open}
     >
       <DialogTrigger
-        render={
-          <Button
-            className="h-11 rounded-full px-5"
-            variant="outline"
-          />
-        }
+        render={<Button className="h-11 rounded-full px-5" variant="outline" />}
       >
-        <Pencil aria-hidden="true" /> 编辑资料
+        <Pencil aria-hidden="true" /> 编辑歌名
       </DialogTrigger>
       <DialogContent className="max-w-lg border-foreground/12 bg-card p-6 sm:max-w-lg">
         <form onSubmit={submit}>
           <DialogHeader>
             <DialogTitle className="text-xl text-foreground">
-              编辑歌曲资料
+              编辑歌名与歌手
             </DialogTitle>
             <DialogDescription>歌名和歌手为必填。</DialogDescription>
           </DialogHeader>
@@ -633,26 +670,6 @@ function SongFormDialog({
                 onChange={(e) => setDraft({ ...draft, artist: e.target.value })}
                 required
                 value={draft.artist}
-              />
-            </FormField>
-            <FormField label="歌曲资料链接">
-              <Input
-                className="h-11 bg-background text-base"
-                onChange={(e) =>
-                  setDraft({ ...draft, officialUrl: e.target.value })
-                }
-                placeholder="https://…"
-                type="url"
-                value={draft.officialUrl}
-              />
-            </FormField>
-            <FormField label="官方 MV 链接">
-              <Input
-                className="h-11 bg-background text-base"
-                onChange={(e) => setDraft({ ...draft, mvUrl: e.target.value })}
-                placeholder="https://…"
-                type="url"
-                value={draft.mvUrl}
               />
             </FormField>
           </div>
@@ -749,7 +766,9 @@ function LibraryBackupDialog({
       </DialogTrigger>
       <DialogContent className="max-w-lg border-foreground/12 bg-card p-6 sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-xl text-foreground">本机歌本备份</DialogTitle>
+          <DialogTitle className="text-xl text-foreground">
+            本机歌本备份
+          </DialogTitle>
           <DialogDescription>
             保存歌曲、校音和时间点，不包含音频文件。
           </DialogDescription>
@@ -808,14 +827,18 @@ function LibraryBackupDialog({
 
 function OnlineSongSearchDialog({
   onChoose,
+  onManual,
 }: {
-  onChoose: (song: OnlineSongResult) => Promise<void>;
+  onChoose: SongChoiceHandler;
+  onManual: (suggestedTitle: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<OnlineSongResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [loadingSongId, setLoadingSongId] = useState('');
+  const [generationStage, setGenerationStage] =
+    useState<GenerationStage | null>(null);
   const [searchError, setSearchError] = useState('');
 
   async function searchSongs(event: React.SyntheticEvent<HTMLFormElement>) {
@@ -835,7 +858,9 @@ function OnlineSongSearchDialog({
       };
       if (!response.ok) throw new Error(payload.error || '搜索失败。');
       setResults(payload.songs ?? []);
-      if (!payload.songs?.length) setSearchError('没有找到歌曲。');
+      if (!payload.songs?.length) {
+        setSearchError('没有找到歌曲。可以试试“歌名＋歌手”，或直接粘贴歌词。');
+      }
     } catch (searchFailure) {
       setSearchError(errorMessage(searchFailure));
     } finally {
@@ -845,9 +870,10 @@ function OnlineSongSearchDialog({
 
   async function chooseSong(song: OnlineSongResult) {
     setLoadingSongId(song.id);
+    setGenerationStage('lyrics');
     setSearchError('');
     try {
-      await onChoose(song);
+      await onChoose(song, setGenerationStage);
       setOpen(false);
       setQuery('');
       setResults([]);
@@ -855,6 +881,7 @@ function OnlineSongSearchDialog({
       setSearchError(errorMessage(selectionFailure));
     } finally {
       setLoadingSongId('');
+      setGenerationStage(null);
     }
   }
 
@@ -862,19 +889,24 @@ function OnlineSongSearchDialog({
     <Dialog
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
-        if (!nextOpen) setSearchError('');
+        if (!nextOpen) {
+          setSearchError('');
+          setGenerationStage(null);
+        }
       }}
       open={open}
     >
-      <DialogTrigger
-        render={<Button className="h-11 rounded-full px-5" />}
-      >
+      <DialogTrigger render={<Button className="h-11 rounded-full px-5" />}>
         <Search aria-hidden="true" /> 搜歌
       </DialogTrigger>
       <DialogContent className="max-w-xl border-foreground/12 bg-card p-6 sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="text-xl text-foreground">搜索歌曲</DialogTitle>
-          <DialogDescription>输入歌名或歌手，选择后自动生成学唱歌词。</DialogDescription>
+          <DialogTitle className="text-xl text-foreground">
+            搜索歌曲
+          </DialogTitle>
+          <DialogDescription>
+            输入歌名或歌手，选择后自动生成学唱歌词。
+          </DialogDescription>
         </DialogHeader>
         <form className="mt-5 flex gap-2" onSubmit={searchSongs}>
           <Input
@@ -889,14 +921,36 @@ function OnlineSongSearchDialog({
             disabled={isSearching || Boolean(loadingSongId)}
             type="submit"
           >
-            {isSearching ? <LoaderCircle className="animate-spin" /> : <Search />}
+            {isSearching ? (
+              <LoaderCircle className="animate-spin" />
+            ) : (
+              <Search />
+            )}
             搜索
           </Button>
         </form>
         {searchError ? (
-          <p className="mt-3 text-sm text-rose-700" role="alert">
-            {searchError}
-          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3" role="alert">
+            <p className="text-sm text-rose-700">{searchError}</p>
+            {!results.length && !isSearching ? (
+              <Button
+                className="h-9 rounded-full"
+                onClick={() => {
+                  onManual(query);
+                  setOpen(false);
+                  setQuery('');
+                }}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                粘贴歌词
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        {generationStage ? (
+          <GenerationProgress stage={generationStage} />
         ) : null}
         {results.length ? (
           <div className="mt-4 max-h-[50vh] space-y-2 overflow-y-auto">
@@ -908,13 +962,22 @@ function OnlineSongSearchDialog({
                 onClick={() => void chooseSong(song)}
                 type="button"
               >
-                <Music2 aria-hidden="true" className="size-5 shrink-0 text-primary" />
+                <Music2
+                  aria-hidden="true"
+                  className="size-5 shrink-0 text-primary"
+                />
                 <span className="min-w-0 flex-1">
                   <strong className="block truncate text-base text-foreground">
                     {song.title}
                   </strong>
                   <span className="mt-0.5 block truncate text-sm text-foreground/48">
                     {song.artist}
+                  </span>
+                  <span className="mt-1 flex items-center gap-2 text-xs text-foreground/48">
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">
+                      {song.version === 'cover' ? '翻唱' : '原版'}
+                    </span>
+                    <span>{formatDuration(song.duration)}</span>
                   </span>
                 </span>
                 {loadingSongId === song.id ? (
@@ -929,18 +992,51 @@ function OnlineSongSearchDialog({
   );
 }
 
+function GenerationProgress({ stage }: { stage: GenerationStage }) {
+  const stages: Array<{ id: GenerationStage; label: string }> = [
+    { id: 'lyrics', label: '获取歌词' },
+    { id: 'dictionary', label: '加载日语词典' },
+    { id: 'phonetic', label: '生成音译' },
+  ];
+  const activeIndex = stages.findIndex((item) => item.id === stage);
+  return (
+    <div
+      className="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-primary/[0.07] p-3"
+      aria-live="polite"
+    >
+      {stages.map((item, index) => (
+        <span
+          key={item.id}
+          className={`text-center text-xs sm:text-sm ${
+            index <= activeIndex
+              ? 'font-medium text-primary'
+              : 'text-foreground/38'
+          }`}
+        >
+          {index < activeIndex ? '✓ ' : index === activeIndex ? '● ' : ''}
+          {item.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function EmptyLibrary({
   onChoose,
+  onManual,
 }: {
-  onChoose: (song: OnlineSongResult) => Promise<void>;
+  onChoose: SongChoiceHandler;
+  onManual: (suggestedTitle: string) => void;
 }) {
   return (
     <section className="grid min-h-80 place-items-center rounded-[1.75rem] border border-dashed border-foreground/16 bg-card p-8 text-center">
       <div>
         <Music2 aria-hidden="true" className="mx-auto size-10 text-primary" />
-        <h2 className="mt-4 text-2xl font-semibold text-foreground">歌本还是空的</h2>
+        <h2 className="mt-4 text-2xl font-semibold text-foreground">
+          歌本还是空的
+        </h2>
         <div className="mt-5">
-          <OnlineSongSearchDialog onChoose={onChoose} />
+          <OnlineSongSearchDialog onChoose={onChoose} onManual={onManual} />
         </div>
       </div>
     </section>
@@ -1121,6 +1217,7 @@ function LyricsReader({
   onEdit,
   onSave,
   onSaveCorrection,
+  onSaveWithCorrections,
   song,
 }: {
   corrections: Record<string, string>;
@@ -1130,6 +1227,10 @@ function LyricsReader({
   onEdit: () => void;
   onSave: (lines: LyricLine[]) => void;
   onSaveCorrection: (reading: string, chinesePhonetic: string) => void;
+  onSaveWithCorrections: (
+    lines: LyricLine[],
+    corrections: Record<string, string>,
+  ) => void;
   song: SongRecord;
 }) {
   const [isEditingLines, setIsEditingLines] = useState(false);
@@ -1140,10 +1241,15 @@ function LyricsReader({
   const [lineError, setLineError] = useState('');
   const [showAudioSync, setShowAudioSync] = useState(Boolean(song.sourceId));
   const [audioError, setAudioError] = useState(false);
+  const [audioRetryStopped, setAudioRetryStopped] = useState(false);
   const [audioAttempt, setAudioAttempt] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [stopAt, setStopAt] = useState<number | null>(null);
   const [activeLineIndex, setActiveLineIndex] = useState<number | null>(null);
+  const [editingPhoneticIndex, setEditingPhoneticIndex] = useState<
+    number | null
+  >(null);
+  const [phoneticDraft, setPhoneticDraft] = useState('');
   const audioRef = useRef<HTMLAudioElement>(null);
   const audioRetryCountRef = useRef(0);
   const audioRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1172,12 +1278,17 @@ function LyricsReader({
     audioRetryTimerRef.current = null;
     audioRetryCountRef.current = 0;
     setAudioError(false);
+    setAudioRetryStopped(false);
     setAudioAttempt((current) => current + 1);
   }
 
   function handleAudioError() {
     setAudioError(true);
-    if (audioRetryCountRef.current >= 2 || audioRetryTimerRef.current) return;
+    if (audioRetryCountRef.current >= 1) {
+      setAudioRetryStopped(true);
+      return;
+    }
+    if (audioRetryTimerRef.current) return;
     audioRetryCountRef.current += 1;
     audioRetryTimerRef.current = setTimeout(() => {
       audioRetryTimerRef.current = null;
@@ -1188,6 +1299,53 @@ function LyricsReader({
   function handleAudioLoaded() {
     audioRetryCountRef.current = 0;
     setAudioError(false);
+    setAudioRetryStopped(false);
+  }
+
+  function startPhoneticEdit(index: number) {
+    setEditingPhoneticIndex(index);
+    setPhoneticDraft(lines[index]?.chinesePhonetic ?? '');
+  }
+
+  function savePhoneticEdit(index: number) {
+    const line = lines[index];
+    const value = phoneticDraft.trim();
+    if (!line || line.isBreak || !value) return;
+    const key = normalizeReadingKey(line.reading);
+    const updated = lines.map((current, lineIndex) =>
+      lineIndex === index
+        ? {
+            ...current,
+            chinesePhonetic: value,
+            chinesePhoneticEdited: true,
+          }
+        : current,
+    );
+    onSaveWithCorrections(
+      updated,
+      key ? { ...corrections, [key]: value } : corrections,
+    );
+    setEditingPhoneticIndex(null);
+  }
+
+  function restorePhonetic(index: number) {
+    const line = lines[index];
+    if (!line || line.isBreak) return;
+    const key = normalizeReadingKey(line.reading);
+    const nextCorrections = { ...corrections };
+    if (key) delete nextCorrections[key];
+    const updated = lines.map((current, lineIndex) =>
+      lineIndex === index
+        ? {
+            ...current,
+            chinesePhonetic: readingToChinese(current.reading, nextCorrections),
+            chinesePhoneticEdited: false,
+            phoneticVersion: PHONETIC_RULES_VERSION,
+          }
+        : current,
+    );
+    onSaveWithCorrections(updated, nextCorrections);
+    setEditingPhoneticIndex(null);
   }
 
   function startEditing() {
@@ -1462,7 +1620,7 @@ function LyricsReader({
                 <AlertDialogHeader>
                   <AlertDialogTitle>清除此歌的本机歌词？</AlertDialogTitle>
                   <AlertDialogDescription>
-                    歌曲资料会保留，但粘贴的歌词和生成结果将被删除。
+                    歌名会保留，但粘贴的歌词和生成结果将被删除。
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -1529,6 +1687,7 @@ function LyricsReader({
                     }
                   }}
                   playsInline
+                  preload="metadata"
                   src={audioUrl}
                 >
                   <track
@@ -1540,7 +1699,9 @@ function LyricsReader({
                   />
                 </audio>
               ) : (
-                <p className="text-sm text-foreground/48">这首歌没有关联在线音源</p>
+                <p className="text-sm text-foreground/48">
+                  这首歌没有关联在线音源
+                </p>
               )}
             </div>
             {lines.some((line) => typeof line.startTime === 'number') ? (
@@ -1555,19 +1716,26 @@ function LyricsReader({
             ) : null}
           </div>
           {audioError ? (
-            <div className="mt-2 flex items-center justify-between gap-3" role="alert">
+            <div
+              className="mt-2 flex items-center justify-between gap-3"
+              role="alert"
+            >
               <p className="text-sm text-rose-700">
-                在线音源连接失败，正在自动重试。
+                {audioRetryStopped
+                  ? '音源暂时不可用，歌词仍可正常练习。'
+                  : '在线音源连接失败，正在重试。'}
               </p>
-              <Button
-                className="h-9 shrink-0 rounded-full"
-                onClick={retryAudio}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                立即重试
-              </Button>
+              {audioRetryStopped ? (
+                <Button
+                  className="h-9 shrink-0 rounded-full"
+                  onClick={retryAudio}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  重新连接
+                </Button>
+              ) : null}
             </div>
           ) : null}
           {audioUrl && activeLine && !activeLine.isBreak ? (
@@ -1727,9 +1895,63 @@ function LyricsReader({
                   <p className="mt-2 font-mono text-base leading-relaxed text-muted-foreground sm:text-lg">
                     {line.romaji}
                   </p>
-                  <p className="mt-2 text-lg leading-relaxed font-medium tracking-[0.06em] text-primary sm:text-xl">
-                    {line.chinesePhonetic}
-                  </p>
+                  {editingPhoneticIndex === index ? (
+                    <div className="mt-3 rounded-xl border border-primary/25 bg-primary/[0.05] p-3">
+                      <Input
+                        className="h-11 bg-background text-lg text-primary"
+                        onChange={(event) =>
+                          setPhoneticDraft(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') savePhoneticEdit(index);
+                          if (event.key === 'Escape')
+                            setEditingPhoneticIndex(null);
+                        }}
+                        value={phoneticDraft}
+                      />
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Button
+                          className="h-9 rounded-full"
+                          onClick={() => savePhoneticEdit(index)}
+                          size="sm"
+                          type="button"
+                        >
+                          保存并记住
+                        </Button>
+                        <Button
+                          className="h-9 rounded-full"
+                          onClick={() => setEditingPhoneticIndex(null)}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          取消
+                        </Button>
+                        <Button
+                          className="h-9 rounded-full"
+                          onClick={() => restorePhonetic(index)}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          恢复自动结果
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      className="mt-2 flex w-full items-center gap-2 rounded-lg text-left text-lg leading-relaxed font-medium tracking-[0.06em] text-primary transition hover:bg-primary/[0.05] focus-visible:outline-2 focus-visible:outline-primary sm:text-xl"
+                      onClick={() => startPhoneticEdit(index)}
+                      type="button"
+                    >
+                      <span>{line.chinesePhonetic}</span>
+                      {line.chinesePhoneticEdited ? (
+                        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs tracking-normal">
+                          已修改
+                        </span>
+                      ) : null}
+                    </button>
+                  )}
                   {showAudioSync ? (
                     <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-foreground/[0.07] pt-4">
                       <span className="min-w-16 font-mono text-sm text-foreground/48">
@@ -1778,6 +2000,13 @@ function formatTimestamp(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remaining = (seconds % 60).toFixed(1).padStart(4, '0');
   return `${String(minutes).padStart(2, '0')}:${remaining}`;
+}
+
+function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '时长未知';
+  const minutes = Math.floor(seconds / 60);
+  const remaining = Math.round(seconds % 60);
+  return `${minutes}:${String(remaining).padStart(2, '0')}`;
 }
 
 function buildCaptionTrack(lines: LyricLine[], duration: number): string {

@@ -5,6 +5,7 @@ export type OnlineSongResult = {
   title: string;
   artist: string;
   duration: number;
+  version: 'original' | 'cover';
 };
 
 export type TimedLyricLine = {
