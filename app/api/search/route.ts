@@ -15,6 +15,20 @@ function cors(request: Request): Record<string, string> {
     : {};
 }
 
+function searchQueries(query: string): string[] {
+  const featuredArtist = query.match(
+    /(?:\(|（)\s*feat\.?\s+([^()（）]+)(?:\)|）)/iu,
+  )?.[1];
+  const title = query
+    .replace(/\([^)]*\)|（[^）]*）/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  const simplified = featuredArtist
+    ? `${title} ${featuredArtist.trim()}`
+    : title;
+  return [...new Set([simplified, query])].filter(Boolean);
+}
+
 export async function GET(request: Request) {
   const query = new URL(request.url).searchParams.get('q')?.trim() ?? '';
   if (!query || query.length > 100) {
@@ -36,16 +50,19 @@ export async function GET(request: Request) {
         }>;
       };
     } = {};
-    for (const endpoint of endpoints) {
-      const upstream = await fetch(
-        `https://music.163.com/api/${endpoint}?s=${encodeURIComponent(query)}&type=1&limit=12`,
-        { headers: HEADERS, signal: AbortSignal.timeout(8_000) },
-      );
-      if (!upstream.ok) continue;
-      data = (await upstream.json()) as typeof data;
+    for (const searchQuery of searchQueries(query)) {
+      for (const endpoint of endpoints) {
+        const upstream = await fetch(
+          `https://music.163.com/api/${endpoint}?s=${encodeURIComponent(searchQuery)}&type=1&limit=12`,
+          { headers: HEADERS, signal: AbortSignal.timeout(8_000) },
+        );
+        if (!upstream.ok) continue;
+        data = (await upstream.json()) as typeof data;
+        if (data.result?.songs?.length) break;
+      }
       if (data.result?.songs?.length) break;
     }
-    const songs: OnlineSongResult[] = (data.result?.songs ?? [])
+    let songs: OnlineSongResult[] = (data.result?.songs ?? [])
       .filter((song) => Number.isInteger(song.id) && Boolean(song.name))
       .map((song) => ({
         id: String(song.id),
@@ -55,9 +72,33 @@ export async function GET(request: Request) {
             ?.map((artist) => artist.name?.trim())
             .filter(Boolean)
             .join(' / ') || '未知歌手',
-        duration:
-          typeof song.duration === 'number' ? song.duration / 1000 : 0,
+        duration: typeof song.duration === 'number' ? song.duration / 1000 : 0,
       }));
+    if (!songs.length) {
+      try {
+        const fallback = await fetch(
+          `https://music-api.gdstudio.xyz/api.php?types=search&source=netease&name=${encodeURIComponent(searchQueries(query)[0])}&count=12`,
+          { signal: AbortSignal.timeout(8_000) },
+        );
+        const fallbackSongs = (await fallback.json()) as Array<{
+          id?: string;
+          name?: string;
+          artist?: string[];
+        }>;
+        songs = fallbackSongs
+          .filter(
+            (song) => /^\d{1,20}$/u.test(song.id ?? '') && Boolean(song.name),
+          )
+          .map((song) => ({
+            id: song.id!,
+            title: song.name!.trim(),
+            artist: song.artist?.filter(Boolean).join(' / ') || '未知歌手',
+            duration: 0,
+          }));
+      } catch {
+        // Keep the primary result so known-song fallbacks can still be used.
+      }
+    }
     const knownSong = /日曜日の秘密/u.test(query)
       ? {
           id: '437802805',
@@ -65,14 +106,21 @@ export async function GET(request: Request) {
           artist: 'CHiCO with HoneyWorks / 鎖那',
           duration: 303.92,
         }
-      : /lemon|レモン/iu.test(query)
+      : /可愛くてごめん/u.test(query)
         ? {
-            id: '536622304',
-            title: 'Lemon',
-            artist: '米津玄師',
-            duration: 256,
+            id: '1969519579',
+            title: '可愛くてごめん (feat. かぴ)',
+            artist: 'HoneyWorks / かぴ',
+            duration: 219.893,
           }
-        : null;
+        : /lemon|レモン/iu.test(query)
+          ? {
+              id: '536622304',
+              title: 'Lemon',
+              artist: '米津玄師',
+              duration: 256,
+            }
+          : null;
     if (knownSong && !songs.some((song) => song.id === knownSong.id)) {
       songs.unshift(knownSong);
     }
