@@ -770,7 +770,7 @@ function LibraryBackupDialog({
           </label>
         </div>
         {backupError ? (
-          <p className="mt-4 text-sm text-red-300" role="alert">
+          <p className="mt-4 text-sm text-red-700" role="alert">
             {backupError}
           </p>
         ) : null}
@@ -887,7 +887,7 @@ function OnlineSongSearchDialog({
           </Button>
         </form>
         {searchError ? (
-          <p className="mt-3 text-sm text-rose-300" role="alert">
+          <p className="mt-3 text-sm text-rose-700" role="alert">
             {searchError}
           </p>
         ) : null}
@@ -1080,7 +1080,7 @@ function LyricsEditor({
           <p
             id="lyrics-error"
             aria-live="polite"
-            className="mt-3 text-base text-rose-300"
+            className="mt-3 text-base text-rose-700"
           >
             {error}
           </p>
@@ -1133,12 +1133,15 @@ function LyricsReader({
   const [lineError, setLineError] = useState('');
   const [showAudioSync, setShowAudioSync] = useState(Boolean(song.sourceId));
   const [audioError, setAudioError] = useState(false);
+  const [audioAttempt, setAudioAttempt] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [stopAt, setStopAt] = useState<number | null>(null);
   const [activeLineIndex, setActiveLineIndex] = useState<number | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const audioRetryCountRef = useRef(0);
+  const audioRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioUrl = song.sourceId
-    ? apiUrl(`/api/audio?id=${song.sourceId}`)
+    ? apiUrl(`/api/audio?id=${song.sourceId}&attempt=${audioAttempt}`)
     : '';
   const linesRef = useRef(lines);
   const captionTrack = useMemo(
@@ -1149,6 +1152,36 @@ function LyricsReader({
   useEffect(() => {
     linesRef.current = lines;
   }, [lines]);
+
+  useEffect(
+    () => () => {
+      if (audioRetryTimerRef.current) clearTimeout(audioRetryTimerRef.current);
+    },
+    [],
+  );
+
+  function retryAudio() {
+    if (audioRetryTimerRef.current) clearTimeout(audioRetryTimerRef.current);
+    audioRetryTimerRef.current = null;
+    audioRetryCountRef.current = 0;
+    setAudioError(false);
+    setAudioAttempt((current) => current + 1);
+  }
+
+  function handleAudioError() {
+    setAudioError(true);
+    if (audioRetryCountRef.current >= 2 || audioRetryTimerRef.current) return;
+    audioRetryCountRef.current += 1;
+    audioRetryTimerRef.current = setTimeout(() => {
+      audioRetryTimerRef.current = null;
+      setAudioAttempt((current) => current + 1);
+    }, 1_200);
+  }
+
+  function handleAudioLoaded() {
+    audioRetryCountRef.current = 0;
+    setAudioError(false);
+  }
 
   function startEditing() {
     setDraftLines(lines.map((line) => ({ ...line })));
@@ -1357,7 +1390,7 @@ function LyricsReader({
         </div>
       ) : null}
       {lineError ? (
-        <p className="mb-4 text-sm text-red-300" role="alert">
+        <p className="mb-4 text-sm text-red-700" role="alert">
           {lineError}
         </p>
       ) : null}
@@ -1468,11 +1501,12 @@ function LyricsReader({
                   ref={audioRef}
                   className="h-11 w-full"
                   controls
-                  onLoadedMetadata={(event) =>
-                    setAudioDuration(event.currentTarget.duration)
-                  }
-                  onError={() => setAudioError(true)}
-                  onLoadedData={() => setAudioError(false)}
+                  onLoadedMetadata={(event) => {
+                    setAudioDuration(event.currentTarget.duration);
+                    handleAudioLoaded();
+                  }}
+                  onError={handleAudioError}
+                  onLoadedData={handleAudioLoaded}
                   onTimeUpdate={(event) => {
                     const nextIndex = activeLyricIndexAtTime(
                       linesRef.current,
@@ -1514,9 +1548,20 @@ function LyricsReader({
             ) : null}
           </div>
           {audioError ? (
-            <p className="mt-2 text-sm text-rose-300" role="alert">
-              在线音源暂时不可播放，请稍后重试或选择其他搜索结果。
-            </p>
+            <div className="mt-2 flex items-center justify-between gap-3" role="alert">
+              <p className="text-sm text-rose-700">
+                在线音源连接失败，正在自动重试。
+              </p>
+              <Button
+                className="h-9 shrink-0 rounded-full"
+                onClick={retryAudio}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                立即重试
+              </Button>
+            </div>
           ) : null}
           {audioUrl && activeLine && !activeLine.isBreak ? (
             <div className="mt-3 grid gap-3 border-t border-foreground/10 pt-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
