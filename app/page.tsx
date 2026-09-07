@@ -3,7 +3,11 @@
 import {
   ArrowLeft,
   AudioLines,
+  ChevronLeft,
+  ChevronRight,
+  Download,
   ExternalLink,
+  FileUp,
   LockKeyhole,
   Music2,
   Pencil,
@@ -40,19 +44,23 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  adjacentLyricIndex,
   convertLyrics,
   getLinePlaybackRange,
   lyricLinesToRawText,
   MAX_LYRICS_LENGTH,
   PHONETIC_RULES_VERSION,
   regenerateLyricLine,
+  setLyricStartTime,
   type LyricLine,
 } from '@/lib/lyrics';
 import { normalizeReadingKey } from '@/lib/phonetic';
 import {
   createDefaultLibrary,
   loadSongLibrary,
+  parseSongLibraryBackup,
   saveSongLibrary,
+  serializeSongLibraryBackup,
   type SongLibrary,
   type SongRecord,
 } from '@/lib/storage';
@@ -79,6 +87,8 @@ const EMPTY_DRAFT: SongDraft = {
   officialUrl: '',
   mvUrl: '',
 };
+
+const MAX_BACKUP_SIZE = 5 * 1024 * 1024;
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -322,6 +332,21 @@ export default function Home() {
     persist({ ...library, phoneticCorrections: nextCorrections });
   }
 
+  function importLibrary(imported: SongLibrary) {
+    const active =
+      imported.songs.find((song) => song.id === imported.activeSongId) ??
+      imported.songs[0] ??
+      null;
+    const next = {
+      ...imported,
+      activeSongId: active?.id ?? '',
+    };
+    persist(next);
+    setRawLyrics(active?.rawLyrics ?? '');
+    setIsEditing(!active?.lines.length);
+    setError('');
+  }
+
   async function handleSubmit(event: { preventDefault(): void }) {
     event.preventDefault();
     setIsGenerating(true);
@@ -342,7 +367,10 @@ export default function Home() {
           <h1 className="font-heading text-2xl font-semibold tracking-[-0.035em] text-white sm:text-4xl">
             日语歌本
           </h1>
-          <SongFormDialog mode="add" onSave={addSong} />
+          <div className="flex flex-wrap justify-end gap-2">
+            <LibraryBackupDialog library={library} onImport={importLibrary} />
+            <SongFormDialog mode="add" onSave={addSong} />
+          </div>
         </header>
 
         <SongShelf
@@ -612,6 +640,124 @@ function FormField({
   );
 }
 
+function LibraryBackupDialog({
+  library,
+  onImport,
+}: {
+  library: SongLibrary;
+  onImport: (library: SongLibrary) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [candidate, setCandidate] = useState<SongLibrary | null>(null);
+  const [fileName, setFileName] = useState('');
+  const [backupError, setBackupError] = useState('');
+
+  function exportBackup() {
+    const content = serializeSongLibraryBackup(library);
+    const url = URL.createObjectURL(
+      new Blob([content], { type: 'application/json;charset=utf-8' }),
+    );
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `日语歌本-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  async function chooseBackup(file: File | undefined) {
+    setCandidate(null);
+    setFileName('');
+    setBackupError('');
+    if (!file) return;
+    if (file.size > MAX_BACKUP_SIZE) {
+      setBackupError('备份文件不能超过 5 MB。');
+      return;
+    }
+    try {
+      const imported = parseSongLibraryBackup(await file.text());
+      setCandidate(imported);
+      setFileName(file.name);
+    } catch (backupParseError) {
+      setBackupError(errorMessage(backupParseError));
+    }
+  }
+
+  return (
+    <Dialog
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
+          setCandidate(null);
+          setFileName('');
+          setBackupError('');
+        }
+        setOpen(nextOpen);
+      }}
+      open={open}
+    >
+      <DialogTrigger
+        render={<Button className="h-11 rounded-full px-4" variant="ghost" />}
+      >
+        备份
+      </DialogTrigger>
+      <DialogContent className="max-w-lg border-white/12 bg-card p-6 sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-xl text-white">本机歌本备份</DialogTitle>
+          <DialogDescription>
+            保存歌曲、校音和时间点，不包含音频文件。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <Button
+            className="h-12 rounded-full"
+            onClick={exportBackup}
+            type="button"
+            variant="outline"
+          >
+            <Download aria-hidden="true" /> 导出备份
+          </Button>
+          <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-full bg-white/8 px-5 text-sm font-medium text-white transition hover:bg-white/12 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary">
+            <FileUp aria-hidden="true" className="size-4" /> 选择备份文件
+            <input
+              accept="application/json,.json"
+              className="sr-only"
+              onChange={(event) => {
+                void chooseBackup(event.target.files?.[0]);
+                event.target.value = '';
+              }}
+              type="file"
+            />
+          </label>
+        </div>
+        {backupError ? (
+          <p className="mt-4 text-sm text-red-300" role="alert">
+            {backupError}
+          </p>
+        ) : null}
+        {candidate ? (
+          <div className="mt-5 rounded-2xl border border-primary/25 bg-primary/[0.06] p-4">
+            <p className="truncate text-sm text-white/72">{fileName}</p>
+            <p className="mt-1 text-sm text-white/48">
+              {candidate.songs.length} 首歌曲 ·{' '}
+              {Object.keys(candidate.phoneticCorrections).length} 条校音
+            </p>
+            <Button
+              className="mt-4 h-11 w-full rounded-full"
+              onClick={() => {
+                onImport(candidate);
+                setOpen(false);
+              }}
+              type="button"
+              variant="destructive"
+            >
+              覆盖本机歌本
+            </Button>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function EmptyLibrary({ onAdd }: { onAdd: (draft: SongDraft) => void }) {
   return (
     <section className="grid min-h-80 place-items-center rounded-[1.75rem] border border-dashed border-white/16 bg-card p-8 text-center">
@@ -820,11 +966,17 @@ function LyricsReader({
   const [audioName, setAudioName] = useState('');
   const [audioDuration, setAudioDuration] = useState(0);
   const [stopAt, setStopAt] = useState<number | null>(null);
+  const [activeLineIndex, setActiveLineIndex] = useState<number | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const linesRef = useRef(lines);
   const captionTrack = useMemo(
     () => buildCaptionTrack(lines, audioDuration),
     [audioDuration, lines],
   );
+
+  useEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
 
   useEffect(() => {
     return () => {
@@ -958,16 +1110,51 @@ function LyricsReader({
     setAudioName(file.name);
     setAudioDuration(0);
     setStopAt(null);
+    setActiveLineIndex((current) =>
+      current === null ? adjacentLyricIndex(lines, null, 1) : current,
+    );
   }
 
   function markLine(index: number) {
     const audio = audioRef.current;
     if (!audio) return;
-    const startTime = Math.round(audio.currentTime * 10) / 10;
-    const updated = lines.map((line, lineIndex) =>
-      lineIndex === index ? { ...line, startTime } : line,
+    const updated = setLyricStartTime(
+      linesRef.current,
+      index,
+      audio.currentTime,
     );
+    linesRef.current = updated;
     onSave(updated);
+    setActiveLineIndex(index);
+  }
+
+  function selectActiveLine(index: number) {
+    setActiveLineIndex(index);
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`lyric-line-${index}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
+  function moveActiveLine(direction: -1 | 1) {
+    const next = adjacentLyricIndex(lines, activeLineIndex, direction);
+    if (next !== null) selectActiveLine(next);
+  }
+
+  function markAndAdvance() {
+    const audio = audioRef.current;
+    const current = activeLineIndex ?? adjacentLyricIndex(lines, null, 1);
+    if (!audio || current === null) return;
+    const updated = setLyricStartTime(
+      linesRef.current,
+      current,
+      audio.currentTime,
+    );
+    linesRef.current = updated;
+    onSave(updated);
+    const next = adjacentLyricIndex(lines, current, 1);
+    if (next !== null) selectActiveLine(next);
   }
 
   function playLine(index: number) {
@@ -981,12 +1168,23 @@ function LyricsReader({
   }
 
   function clearTimings() {
-    onSave(lines.map((line) => ({ ...line, startTime: undefined })));
+    const updated = linesRef.current.map((line) => ({
+      ...line,
+      startTime: undefined,
+    }));
+    linesRef.current = updated;
+    onSave(updated);
     setStopAt(null);
   }
 
+  const activeLine =
+    activeLineIndex === null ? null : (lines[activeLineIndex] ?? null);
+
   return (
-    <section aria-label="对照歌词">
+    <section
+      aria-label="对照歌词"
+      className={showAudioSync && audioUrl ? 'pb-52 sm:pb-0' : undefined}
+    >
       {outdatedCount ? (
         <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-primary/25 bg-primary/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-white/72">
@@ -1085,7 +1283,12 @@ function LyricsReader({
         {!isEditingLines ? (
           <Button
             className="h-11 rounded-full px-4"
-            onClick={() => setShowAudioSync((current) => !current)}
+            onClick={() => {
+              setShowAudioSync((current) => !current);
+              setActiveLineIndex((current) =>
+                current === null ? adjacentLyricIndex(lines, null, 1) : current,
+              );
+            }}
             type="button"
             variant={showAudioSync ? 'default' : 'outline'}
           >
@@ -1094,10 +1297,15 @@ function LyricsReader({
         ) : null}
       </div>
       {showAudioSync && !isEditingLines ? (
-        <div className="mb-4 rounded-2xl border border-primary/20 bg-primary/[0.06] p-4 sm:p-5">
+        <div
+          className={`rounded-2xl border border-primary/20 bg-[#08152f]/95 p-4 shadow-[0_20px_70px_rgb(0_0_0/45%)] backdrop-blur sm:mb-4 sm:bg-primary/[0.06] sm:p-5 sm:shadow-none ${
+            audioUrl ? 'fixed inset-x-3 bottom-3 z-40 sm:static' : 'mb-4'
+          }`}
+        >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
-              <Upload aria-hidden="true" className="size-4" /> 选择音频
+              <Upload aria-hidden="true" className="size-4" />{' '}
+              {audioUrl ? '更换音频' : '选择音频'}
               <input
                 accept="audio/*,.mp3,.m4a,.wav,.flac"
                 className="sr-only"
@@ -1154,6 +1362,51 @@ function LyricsReader({
               {audioName} · 音频不上传
             </p>
           ) : null}
+          {audioUrl && activeLine && !activeLine.isBreak ? (
+            <div className="mt-3 grid gap-3 border-t border-white/10 pt-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+              <div className="flex items-center gap-1">
+                <Button
+                  aria-label="上一句"
+                  className="size-10 rounded-full"
+                  disabled={
+                    adjacentLyricIndex(lines, activeLineIndex, -1) === null
+                  }
+                  onClick={() => moveActiveLine(-1)}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <ChevronLeft aria-hidden="true" />
+                </Button>
+                <Button
+                  aria-label="下一句"
+                  className="size-10 rounded-full"
+                  disabled={
+                    adjacentLyricIndex(lines, activeLineIndex, 1) === null
+                  }
+                  onClick={() => moveActiveLine(1)}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <ChevronRight aria-hidden="true" />
+                </Button>
+              </div>
+              <p
+                className="min-w-0 truncate text-base font-medium text-white"
+                lang="ja"
+              >
+                {activeLine.japanese}
+              </p>
+              <Button
+                className="h-11 rounded-full px-5"
+                onClick={markAndAdvance}
+                type="button"
+              >
+                标记并下一句
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-card shadow-[0_24px_80px_rgb(2_6_23/28%)]">
@@ -1167,7 +1420,12 @@ function LyricsReader({
           ) : (
             <article
               key={index}
-              className="border-b border-white/[0.07] px-5 py-7 last:border-b-0 sm:px-8"
+              id={`lyric-line-${index}`}
+              className={`border-b border-white/[0.07] px-5 py-7 last:border-b-0 sm:px-8 ${
+                showAudioSync && activeLineIndex === index
+                  ? 'bg-primary/[0.07] ring-1 ring-inset ring-primary/30'
+                  : ''
+              }`}
             >
               {isEditingLines ? (
                 <div className="grid gap-3">

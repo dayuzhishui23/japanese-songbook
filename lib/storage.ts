@@ -23,9 +23,42 @@ export type SongLibrary = {
   phoneticCorrections: PhoneticCorrections;
 };
 
+type SongLibraryBackup = {
+  format: 'japanese-songbook-backup';
+  version: 1;
+  exportedAt: string;
+  library: SongLibrary;
+};
+
 type StorageReader = Pick<Storage, 'getItem' | 'removeItem' | 'setItem'>;
 
 const LEMON_ID = 'lemon-kenshi-yonezu';
+
+function isOptionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === 'boolean';
+}
+
+function isLyricLine(value: unknown): value is LyricLine {
+  if (!value || typeof value !== 'object') return false;
+  const line = value as Partial<LyricLine>;
+  return (
+    typeof line.japanese === 'string' &&
+    typeof line.reading === 'string' &&
+    typeof line.romaji === 'string' &&
+    typeof line.chinesePhonetic === 'string' &&
+    typeof line.isBreak === 'boolean' &&
+    (line.startTime === undefined ||
+      (typeof line.startTime === 'number' &&
+        Number.isFinite(line.startTime) &&
+        line.startTime >= 0)) &&
+    isOptionalBoolean(line.readingEdited) &&
+    isOptionalBoolean(line.romajiEdited) &&
+    isOptionalBoolean(line.chinesePhoneticEdited) &&
+    (line.phoneticVersion === undefined ||
+      (typeof line.phoneticVersion === 'number' &&
+        Number.isInteger(line.phoneticVersion)))
+  );
+}
 
 export function createDefaultLibrary(): SongLibrary {
   return {
@@ -58,7 +91,20 @@ function isSong(value: unknown): value is SongRecord {
     typeof song.mvUrl === 'string' &&
     typeof song.rawLyrics === 'string' &&
     Array.isArray(song.lines) &&
+    song.lines.every(isLyricLine) &&
     typeof song.updatedAt === 'string'
+  );
+}
+
+function isCorrectionDictionary(value: unknown): value is PhoneticCorrections {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.entries(value).every(
+      ([reading, phonetic]) =>
+        Boolean(reading) && typeof phonetic === 'string' && Boolean(phonetic),
+    )
   );
 }
 
@@ -70,9 +116,7 @@ export function isSongLibrary(value: unknown): value is SongLibrary {
     typeof library.activeSongId === 'string' &&
     Array.isArray(library.songs) &&
     library.songs.every(isSong) &&
-    Boolean(library.phoneticCorrections) &&
-    typeof library.phoneticCorrections === 'object' &&
-    !Array.isArray(library.phoneticCorrections)
+    isCorrectionDictionary(library.phoneticCorrections)
   );
 }
 
@@ -178,4 +222,39 @@ export function saveSongLibrary(
   library: SongLibrary,
 ): void {
   storage.setItem(SONG_LIBRARY_STORAGE_KEY, JSON.stringify(library));
+}
+
+export function serializeSongLibraryBackup(
+  library: SongLibrary,
+  exportedAt = new Date().toISOString(),
+): string {
+  const backup: SongLibraryBackup = {
+    format: 'japanese-songbook-backup',
+    version: 1,
+    exportedAt,
+    library,
+  };
+  return JSON.stringify(backup, null, 2);
+}
+
+export function parseSongLibraryBackup(value: string): SongLibrary {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error('这不是有效的歌本备份文件。');
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('这不是有效的歌本备份文件。');
+  }
+  const backup = parsed as Partial<SongLibraryBackup>;
+  if (
+    backup.format !== 'japanese-songbook-backup' ||
+    backup.version !== 1 ||
+    typeof backup.exportedAt !== 'string' ||
+    !isSongLibrary(backup.library)
+  ) {
+    throw new Error('备份格式不受支持或内容不完整。');
+  }
+  return backup.library;
 }

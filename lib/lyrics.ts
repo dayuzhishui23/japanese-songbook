@@ -279,3 +279,45 @@ export function getLinePlaybackRange(
         : start + 10;
   return { start, end };
 }
+
+export function adjacentLyricIndex(
+  lines: LyricLine[],
+  currentIndex: number | null,
+  direction: -1 | 1,
+): number | null {
+  let index =
+    currentIndex === null
+      ? direction === 1
+        ? -1
+        : lines.length
+      : currentIndex;
+  for (
+    index += direction;
+    index >= 0 && index < lines.length;
+    index += direction
+  ) {
+    if (!lines[index]?.isBreak) return index;
+  }
+  return null;
+}
+
+export function setLyricStartTime(
+  lines: LyricLine[],
+  index: number,
+  seconds: number,
+): LyricLine[] {
+  if (
+    !Number.isInteger(index) ||
+    index < 0 ||
+    index >= lines.length ||
+    lines[index]?.isBreak ||
+    !Number.isFinite(seconds) ||
+    seconds < 0
+  ) {
+    return lines;
+  }
+  const startTime = Math.round(seconds * 10) / 10;
+  return lines.map((line, lineIndex) =>
+    lineIndex === index ? { ...line, startTime } : line,
+  );
+}

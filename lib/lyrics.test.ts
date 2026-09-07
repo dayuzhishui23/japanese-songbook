@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  adjacentLyricIndex,
   getLinePlaybackRange,
   lyricLinesToRawText,
   MAX_LYRICS_LENGTH,
+  setLyricStartTime,
   validateLyricsInput,
   type LyricLine,
 } from './lyrics';
@@ -84,4 +86,57 @@ void test('uses the next marked lyric as the current line end', () => {
   });
   assert.deepEqual(getLinePlaybackRange(lines, 2, 20), { start: 6.2, end: 20 });
   assert.equal(getLinePlaybackRange(lines, 1, 20), null);
+});
+
+void test('moves between lyric lines while skipping stanza breaks', () => {
+  const lines: LyricLine[] = [
+    {
+      japanese: '一',
+      reading: '',
+      romaji: '',
+      chinesePhonetic: '',
+      isBreak: false,
+    },
+    {
+      japanese: '',
+      reading: '',
+      romaji: '',
+      chinesePhonetic: '',
+      isBreak: true,
+    },
+    {
+      japanese: '二',
+      reading: '',
+      romaji: '',
+      chinesePhonetic: '',
+      isBreak: false,
+    },
+  ];
+  assert.equal(adjacentLyricIndex(lines, null, 1), 0);
+  assert.equal(adjacentLyricIndex(lines, 0, 1), 2);
+  assert.equal(adjacentLyricIndex(lines, 2, -1), 0);
+  assert.equal(adjacentLyricIndex(lines, 2, 1), null);
+});
+
+void test('sets a rounded lyric start without changing other lines', () => {
+  const lines: LyricLine[] = [
+    {
+      japanese: '一',
+      reading: '',
+      romaji: '',
+      chinesePhonetic: '',
+      isBreak: false,
+    },
+    {
+      japanese: '二',
+      reading: '',
+      romaji: '',
+      chinesePhonetic: '',
+      isBreak: false,
+    },
+  ];
+  const updated = setLyricStartTime(lines, 0, 2.56);
+  assert.equal(updated[0]?.startTime, 2.6);
+  assert.equal(updated[1], lines[1]);
+  assert.equal(setLyricStartTime(lines, 5, 1), lines);
 });

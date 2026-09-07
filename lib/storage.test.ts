@@ -5,8 +5,10 @@ import {
   createDefaultLibrary,
   LEGACY_LYRICS_STORAGE_KEY,
   loadSongLibrary,
+  parseSongLibraryBackup,
   PREVIOUS_SONG_LIBRARY_STORAGE_KEY,
   saveSongLibrary,
+  serializeSongLibraryBackup,
   SONG_LIBRARY_STORAGE_KEY,
 } from './storage';
 
@@ -111,4 +113,40 @@ void test('migrates saved Lemon lyrics from version 1', () => {
 void test('falls back safely when saved data is invalid', () => {
   const storage = fakeStorage({ [SONG_LIBRARY_STORAGE_KEY]: '{broken' });
   assert.equal(loadSongLibrary(storage).songs[0]?.title, 'Lemon');
+});
+
+void test('exports and restores the complete local songbook', () => {
+  const library = createDefaultLibrary();
+  library.phoneticCorrections.きょう = 'Q哟—';
+  library.songs[0]!.lines = [
+    {
+      japanese: '今日',
+      reading: 'きょう',
+      romaji: 'kyou',
+      chinesePhonetic: 'Q哟—',
+      isBreak: false,
+      startTime: 1.2,
+    },
+  ];
+  const serialized = serializeSongLibraryBackup(
+    library,
+    '2026-09-07T00:00:00.000Z',
+  );
+  assert.deepEqual(parseSongLibraryBackup(serialized), library);
+});
+
+void test('rejects malformed or unsupported backups', () => {
+  assert.throws(() => parseSongLibraryBackup('{broken'), /有效/u);
+  assert.throws(
+    () =>
+      parseSongLibraryBackup(
+        JSON.stringify({
+          format: 'japanese-songbook-backup',
+          version: 1,
+          exportedAt: '2026-09-07T00:00:00.000Z',
+          library: { version: 3, activeSongId: '', songs: [{}] },
+        }),
+      ),
+    /不受支持/u,
+  );
 });
