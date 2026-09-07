@@ -408,9 +408,16 @@ export default function Home() {
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-8 sm:py-8">
         <header className="mb-5 flex items-center justify-between gap-4 border-b border-foreground/10 pb-5">
-          <h1 className="font-heading text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-4xl">
-            日语歌本
-          </h1>
+          <div className="flex items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="size-11 rounded-xl bg-cover bg-center sm:size-14"
+              style={{ backgroundImage: "url('./songbook-icon.png')" }}
+            />
+            <h1 className="font-heading text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-4xl">
+              日本語歌集
+            </h1>
+          </div>
           <div className="flex flex-wrap justify-end gap-2">
             <LibraryBackupDialog library={library} onImport={importLibrary} />
             <OnlineSongSearchDialog onChoose={addOnlineSong} />
@@ -700,7 +707,7 @@ function LibraryBackupDialog({
     );
     const link = document.createElement('a');
     link.href = url;
-    link.download = `日语歌本-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `日本語歌集-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }

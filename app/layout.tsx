@@ -13,9 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: '日语学唱歌本',
+  title: '日本語歌集',
   description:
     '在浏览器本地管理多首歌曲，并生成日语歌词、罗马音和中文跟唱音译。',
+  icons: {
+    icon: '/songbook-icon.png',
+    apple: '/songbook-icon.png',
+  },
 };
 
 export default function RootLayout({
