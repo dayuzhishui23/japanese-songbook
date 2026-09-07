@@ -8,6 +8,7 @@ export type LyricLine = {
   romaji: string;
   chinesePhonetic: string;
   isBreak: boolean;
+  startTime?: number;
 };
 
 type KuroshiroInstance = {
@@ -180,4 +181,27 @@ export async function convertLyrics(rawLyrics: string): Promise<LyricLine[]> {
 
 export function lyricLinesToRawText(lines: LyricLine[]): string {
   return lines.map((line) => (line.isBreak ? '' : line.japanese)).join('\n');
+}
+
+export function getLinePlaybackRange(
+  lines: LyricLine[],
+  index: number,
+  duration: number,
+): { start: number; end: number } | null {
+  const start = lines[index]?.startTime;
+  if (typeof start !== 'number' || !Number.isFinite(start) || start < 0)
+    return null;
+
+  const nextStart = lines
+    .slice(index + 1)
+    .find(
+      (line) => !line.isBreak && typeof line.startTime === 'number',
+    )?.startTime;
+  const end =
+    typeof nextStart === 'number' && nextStart > start
+      ? nextStart
+      : Number.isFinite(duration) && duration > start
+        ? duration
+        : start + 10;
+  return { start, end };
 }

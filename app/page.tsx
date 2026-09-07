@@ -2,14 +2,18 @@
 
 import {
   ArrowLeft,
+  AudioLines,
   ExternalLink,
   LockKeyhole,
   Music2,
   Pencil,
+  Play,
   Plus,
+  TimerReset,
   Trash2,
+  Upload,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   AlertDialog,
@@ -37,6 +41,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   convertLyrics,
+  getLinePlaybackRange,
   lyricLinesToRawText,
   MAX_LYRICS_LENGTH,
   type LyricLine,
@@ -673,6 +678,22 @@ function LyricsReader({
 }) {
   const [isEditingLines, setIsEditingLines] = useState(false);
   const [draftLines, setDraftLines] = useState<LyricLine[]>([]);
+  const [showAudioSync, setShowAudioSync] = useState(false);
+  const [audioUrl, setAudioUrl] = useState('');
+  const [audioName, setAudioName] = useState('');
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [stopAt, setStopAt] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const captionTrack = useMemo(
+    () => buildCaptionTrack(lines, audioDuration),
+    [audioDuration, lines],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
 
   function startEditing() {
     setDraftLines(lines.map((line) => ({ ...line })));
@@ -692,6 +713,39 @@ function LyricsReader({
   }
 
   const visibleLines = isEditingLines ? draftLines : lines;
+
+  function chooseAudio(file: File | undefined) {
+    if (!file) return;
+    setAudioUrl(URL.createObjectURL(file));
+    setAudioName(file.name);
+    setAudioDuration(0);
+    setStopAt(null);
+  }
+
+  function markLine(index: number) {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const startTime = Math.round(audio.currentTime * 10) / 10;
+    const updated = lines.map((line, lineIndex) =>
+      lineIndex === index ? { ...line, startTime } : line,
+    );
+    onSave(updated);
+  }
+
+  function playLine(index: number) {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const range = getLinePlaybackRange(lines, index, audio.duration);
+    if (!range) return;
+    audio.currentTime = range.start;
+    setStopAt(range.end);
+    void audio.play();
+  }
+
+  function clearTimings() {
+    onSave(lines.map((line) => ({ ...line, startTime: undefined })));
+    setStopAt(null);
+  }
 
   return (
     <section aria-label="对照歌词">
@@ -766,7 +820,80 @@ function LyricsReader({
             </AlertDialog>
           </>
         ) : null}
+        {!isEditingLines ? (
+          <Button
+            className="h-11 rounded-full px-4"
+            onClick={() => setShowAudioSync((current) => !current)}
+            type="button"
+            variant={showAudioSync ? 'default' : 'outline'}
+          >
+            <AudioLines aria-hidden="true" /> 对音源
+          </Button>
+        ) : null}
       </div>
+      {showAudioSync && !isEditingLines ? (
+        <div className="mb-4 rounded-2xl border border-primary/20 bg-primary/[0.06] p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
+              <Upload aria-hidden="true" className="size-4" /> 选择音频
+              <input
+                accept="audio/*,.mp3,.m4a,.wav,.flac"
+                className="sr-only"
+                onChange={(event) => chooseAudio(event.target.files?.[0])}
+                type="file"
+              />
+            </label>
+            <div className="min-w-0 flex-1">
+              {audioUrl ? (
+                <audio
+                  ref={audioRef}
+                  className="h-11 w-full"
+                  controls
+                  onLoadedMetadata={(event) =>
+                    setAudioDuration(event.currentTarget.duration)
+                  }
+                  onTimeUpdate={(event) => {
+                    if (
+                      stopAt !== null &&
+                      event.currentTarget.currentTime >= stopAt - 0.03
+                    ) {
+                      event.currentTarget.pause();
+                      setStopAt(null);
+                    }
+                  }}
+                  playsInline
+                  src={audioUrl}
+                >
+                  <track
+                    default
+                    kind="captions"
+                    label="日语歌词"
+                    src={captionTrack}
+                    srcLang="ja"
+                  />
+                </audio>
+              ) : (
+                <p className="text-sm text-white/48">先选择手机里的音频文件</p>
+              )}
+            </div>
+            {lines.some((line) => typeof line.startTime === 'number') ? (
+              <Button
+                className="h-11 rounded-full"
+                onClick={clearTimings}
+                type="button"
+                variant="ghost"
+              >
+                <TimerReset aria-hidden="true" /> 清除时间
+              </Button>
+            ) : null}
+          </div>
+          {audioName ? (
+            <p className="mt-2 truncate text-sm text-white/42">
+              {audioName} · 音频不上传
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-card shadow-[0_24px_80px_rgb(2_6_23/28%)]">
         {visibleLines.map((line, index) =>
           line.isBreak ? (
@@ -828,6 +955,37 @@ function LyricsReader({
                   <p className="mt-2 text-lg leading-relaxed font-medium tracking-[0.06em] text-primary sm:text-xl">
                     {line.chinesePhonetic}
                   </p>
+                  {showAudioSync ? (
+                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/[0.07] pt-4">
+                      <span className="min-w-16 font-mono text-sm text-white/48">
+                        {typeof line.startTime === 'number'
+                          ? formatTimestamp(line.startTime)
+                          : '--:--.-'}
+                      </span>
+                      <Button
+                        className="h-10 rounded-full"
+                        disabled={!audioUrl}
+                        onClick={() => markLine(index)}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        标记起点
+                      </Button>
+                      <Button
+                        className="h-10 rounded-full"
+                        disabled={
+                          !audioUrl || typeof line.startTime !== 'number'
+                        }
+                        onClick={() => playLine(index)}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Play aria-hidden="true" /> 播放本句
+                      </Button>
+                    </div>
+                  ) : null}
                 </>
               )}
             </article>
@@ -839,4 +997,28 @@ function LyricsReader({
       </p>
     </section>
   );
+}
+
+function formatTimestamp(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remaining = (seconds % 60).toFixed(1).padStart(4, '0');
+  return `${String(minutes).padStart(2, '0')}:${remaining}`;
+}
+
+function buildCaptionTrack(lines: LyricLine[], duration: number): string {
+  const cues = lines.flatMap((line, index) => {
+    const range = getLinePlaybackRange(lines, index, duration);
+    if (line.isBreak || !range) return [];
+    return [
+      `${formatVttTimestamp(range.start)} --> ${formatVttTimestamp(range.end)}\n${line.japanese}`,
+    ];
+  });
+  return `data:text/vtt;charset=utf-8,${encodeURIComponent(`WEBVTT\n\n${cues.join('\n\n')}`)}`;
+}
+
+function formatVttTimestamp(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remaining = (seconds % 60).toFixed(3).padStart(6, '0');
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${remaining}`;
 }

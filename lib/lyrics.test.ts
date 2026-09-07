@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  getLinePlaybackRange,
   lyricLinesToRawText,
   MAX_LYRICS_LENGTH,
   validateLyricsInput,
@@ -49,4 +50,38 @@ void test('rebuilds editable source text while retaining stanza breaks', () => {
     },
   ];
   assert.equal(lyricLinesToRawText(lines), '一行目\n\n二行目');
+});
+
+void test('uses the next marked lyric as the current line end', () => {
+  const lines: LyricLine[] = [
+    {
+      japanese: '一',
+      reading: '',
+      romaji: '',
+      chinesePhonetic: '',
+      isBreak: false,
+      startTime: 2.5,
+    },
+    {
+      japanese: '',
+      reading: '',
+      romaji: '',
+      chinesePhonetic: '',
+      isBreak: true,
+    },
+    {
+      japanese: '二',
+      reading: '',
+      romaji: '',
+      chinesePhonetic: '',
+      isBreak: false,
+      startTime: 6.2,
+    },
+  ];
+  assert.deepEqual(getLinePlaybackRange(lines, 0, 20), {
+    start: 2.5,
+    end: 6.2,
+  });
+  assert.deepEqual(getLinePlaybackRange(lines, 2, 20), { start: 6.2, end: 20 });
+  assert.equal(getLinePlaybackRange(lines, 1, 20), null);
 });
