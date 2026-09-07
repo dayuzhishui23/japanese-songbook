@@ -107,39 +107,6 @@
   }
 }
 
-@keyframes chase-across {
-  0% {
-    left: 0;
-    transform: scaleX(1);
-  }
-  45% {
-    left: calc(100% - var(--animal-width));
-    transform: scaleX(1);
-  }
-  50% {
-    left: calc(100% - var(--animal-width));
-    transform: scaleX(-1);
-  }
-  95% {
-    left: 0;
-    transform: scaleX(-1);
-  }
-  100% {
-    left: 0;
-    transform: scaleX(1);
-  }
-}
-
-@keyframes chase-bob {
-  0%,
-  100% {
-    transform: translateY(0) rotate(-0.5deg);
-  }
-  50% {
-    transform: translateY(-0.35rem) rotate(0.5deg);
-  }
-}
-
 .song-view-enter {
   animation: song-view-in 220ms ease-out both;
 }
@@ -148,73 +115,13 @@
   animation: panel-in 180ms ease-out both;
 }
 
-.animal-playground {
-  --animal-width: 14rem;
-  position: relative;
-  height: 5.5rem;
-  mask-image: linear-gradient(
-    to right,
-    transparent,
-    #000 6%,
-    #000 94%,
-    transparent
-  );
-}
-
-.animal-playground::after {
-  position: absolute;
-  right: 4%;
-  bottom: 0.35rem;
-  left: 4%;
-  height: 1px;
-  content: '';
-  background: linear-gradient(
-    to right,
-    transparent,
-    rgb(82 107 79 / 16%),
-    transparent
-  );
-}
-
-.animal-chase {
-  position: absolute;
-  bottom: 0.35rem;
-  z-index: 1;
-  width: var(--animal-width);
-  animation: chase-across 16s linear infinite;
-  will-change: left, transform;
-}
-
-.animal-chase-art {
-  display: block;
-  width: 100%;
-  height: auto;
-  user-select: none;
-  animation: chase-bob 520ms ease-in-out infinite;
-}
-
-@media (min-width: 640px) {
-  .animal-playground {
-    --animal-width: 17rem;
-    height: 7rem;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
 
   .song-view-enter,
-  .panel-enter,
-  .animal-chase,
-  .animal-chase-art {
+  .panel-enter {
     animation: none;
-  }
-
-  .animal-chase {
-    right: 0;
-    left: auto;
-    transform: none;
   }
 }
