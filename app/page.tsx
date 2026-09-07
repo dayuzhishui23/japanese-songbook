@@ -44,8 +44,11 @@ import {
   getLinePlaybackRange,
   lyricLinesToRawText,
   MAX_LYRICS_LENGTH,
+  PHONETIC_RULES_VERSION,
+  regenerateLyricLine,
   type LyricLine,
 } from '@/lib/lyrics';
+import { normalizeReadingKey } from '@/lib/phonetic';
 import {
   createDefaultLibrary,
   loadSongLibrary,
@@ -124,7 +127,10 @@ export default function Home() {
   const generateFromText = useCallback(
     async (lyrics: string) => {
       if (!activeSong) throw new Error('请先添加一首歌曲。');
-      const converted = await convertLyrics(lyrics);
+      const converted = await convertLyrics(
+        lyrics,
+        library.phoneticCorrections,
+      );
       const normalized = lyrics.replace(/\r\n?/gu, '\n');
       const next: SongLibrary = {
         ...library,
@@ -252,7 +258,12 @@ export default function Home() {
     if (!activeSong) return;
     const songs = library.songs.filter((song) => song.id !== activeSong.id);
     const nextActive = songs[0] ?? null;
-    persist({ version: 2, activeSongId: nextActive?.id ?? '', songs });
+    persist({
+      version: 3,
+      activeSongId: nextActive?.id ?? '',
+      songs,
+      phoneticCorrections: library.phoneticCorrections,
+    });
     setRawLyrics(nextActive?.rawLyrics ?? '');
     setIsEditing(!nextActive?.lines.length);
     setError('');
@@ -290,6 +301,25 @@ export default function Home() {
       ),
     });
     setRawLyrics(updatedRawLyrics);
+  }
+
+  function savePhoneticCorrection(reading: string, chinesePhonetic: string) {
+    const key = normalizeReadingKey(reading);
+    const value = chinesePhonetic.trim();
+    if (!key || !value) return;
+    persist({
+      ...library,
+      phoneticCorrections: {
+        ...library.phoneticCorrections,
+        [key]: value,
+      },
+    });
+  }
+
+  function deletePhoneticCorrection(reading: string) {
+    const nextCorrections = { ...library.phoneticCorrections };
+    delete nextCorrections[reading];
+    persist({ ...library, phoneticCorrections: nextCorrections });
   }
 
   async function handleSubmit(event: { preventDefault(): void }) {
@@ -339,11 +369,14 @@ export default function Home() {
               />
             ) : (
               <LyricsReader
+                corrections={library.phoneticCorrections}
                 key={activeSong.id}
                 lines={activeSong.lines}
                 onClear={clearCurrentLyrics}
+                onDeleteCorrection={deletePhoneticCorrection}
                 onEdit={() => setIsEditing(true)}
                 onSave={saveEditedLines}
+                onSaveCorrection={savePhoneticCorrection}
               />
             )}
           </>
@@ -593,6 +626,100 @@ function EmptyLibrary({ onAdd }: { onAdd: (draft: SongDraft) => void }) {
   );
 }
 
+function PhoneticDictionaryDialog({
+  corrections,
+  onDelete,
+  onSave,
+}: {
+  corrections: Record<string, string>;
+  onDelete: (reading: string) => void;
+  onSave: (reading: string, chinesePhonetic: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reading, setReading] = useState('');
+  const [chinesePhonetic, setChinesePhonetic] = useState('');
+  const entries = Object.entries(corrections).sort(([a], [b]) =>
+    a.localeCompare(b, 'ja'),
+  );
+
+  function submit(event: React.SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reading.trim() || !chinesePhonetic.trim()) return;
+    onSave(reading, chinesePhonetic);
+    setReading('');
+    setChinesePhonetic('');
+  }
+
+  return (
+    <Dialog onOpenChange={setOpen} open={open}>
+      <DialogTrigger
+        render={<Button className="h-11 rounded-full px-4" variant="ghost" />}
+      >
+        校音词典{entries.length ? ` ${entries.length}` : ''}
+      </DialogTrigger>
+      <DialogContent className="max-w-lg border-white/12 bg-card p-6 sm:max-w-lg">
+        <form onSubmit={submit}>
+          <DialogHeader>
+            <DialogTitle className="text-xl text-white">
+              本机校音词典
+            </DialogTitle>
+            <DialogDescription>
+              相同读音再次出现时，优先使用你保存的写法。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <FormField label="平假名读音">
+              <Input
+                className="h-11 bg-[#07122b] text-base"
+                lang="ja"
+                onChange={(event) => setReading(event.target.value)}
+                placeholder="例如：きょう"
+                value={reading}
+              />
+            </FormField>
+            <FormField label="中文跟唱音">
+              <Input
+                className="h-11 bg-[#07122b] text-base"
+                onChange={(event) => setChinesePhonetic(event.target.value)}
+                placeholder="例如：Q哟—"
+                value={chinesePhonetic}
+              />
+            </FormField>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button className="h-10 rounded-full" type="submit">
+              添加
+            </Button>
+          </div>
+          {entries.length ? (
+            <div className="mt-5 max-h-56 space-y-2 overflow-y-auto border-t border-white/10 pt-4">
+              {entries.map(([savedReading, savedPhonetic]) => (
+                <div
+                  key={savedReading}
+                  className="flex items-center gap-3 rounded-xl bg-[#07122b] px-3 py-2"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm text-white/72">
+                    <span lang="ja">{savedReading}</span> → {savedPhonetic}
+                  </span>
+                  <Button
+                    className="h-8 rounded-full"
+                    onClick={() => onDelete(savedReading)}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    删除
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function LyricsEditor({
   error,
   isGenerating,
@@ -666,18 +793,28 @@ function LyricsEditor({
 }
 
 function LyricsReader({
+  corrections,
   lines,
   onClear,
+  onDeleteCorrection,
   onEdit,
   onSave,
+  onSaveCorrection,
 }: {
+  corrections: Record<string, string>;
   lines: LyricLine[];
   onClear: () => void;
+  onDeleteCorrection: (reading: string) => void;
   onEdit: () => void;
   onSave: (lines: LyricLine[]) => void;
+  onSaveCorrection: (reading: string, chinesePhonetic: string) => void;
 }) {
   const [isEditingLines, setIsEditingLines] = useState(false);
   const [draftLines, setDraftLines] = useState<LyricLine[]>([]);
+  const [regeneratingLine, setRegeneratingLine] = useState<number | null>(null);
+  const [isSavingDrafts, setIsSavingDrafts] = useState(false);
+  const [isUpdatingPhonetics, setIsUpdatingPhonetics] = useState(false);
+  const [lineError, setLineError] = useState('');
   const [showAudioSync, setShowAudioSync] = useState(false);
   const [audioUrl, setAudioUrl] = useState('');
   const [audioName, setAudioName] = useState('');
@@ -702,14 +839,115 @@ function LyricsReader({
 
   function updateLine(
     index: number,
-    field: 'japanese' | 'romaji' | 'chinesePhonetic',
+    field: 'japanese' | 'reading' | 'romaji' | 'chinesePhonetic',
     value: string,
   ) {
     setDraftLines((current) =>
       current.map((line, lineIndex) =>
-        lineIndex === index ? { ...line, [field]: value } : line,
+        lineIndex === index
+          ? {
+              ...line,
+              [field]: value,
+              ...(field === 'japanese'
+                ? {
+                    readingEdited: false,
+                    romajiEdited: false,
+                    chinesePhoneticEdited: false,
+                    phoneticVersion: undefined,
+                  }
+                : {}),
+              ...(field === 'reading'
+                ? {
+                    readingEdited: true,
+                    romajiEdited: false,
+                    chinesePhoneticEdited: false,
+                    phoneticVersion: undefined,
+                  }
+                : {}),
+              ...(field === 'romaji' ? { romajiEdited: true } : {}),
+              ...(field === 'chinesePhonetic'
+                ? {
+                    chinesePhoneticEdited: true,
+                    phoneticVersion: line.phoneticVersion,
+                  }
+                : {}),
+            }
+          : line,
       ),
     );
+  }
+
+  async function regenerateDraftLine(index: number, resetManualEdits = false) {
+    const line = draftLines[index];
+    if (!line || line.isBreak || regeneratingLine !== null) return;
+    setRegeneratingLine(index);
+    setLineError('');
+    try {
+      const regenerated = await regenerateLyricLine(
+        line,
+        corrections,
+        resetManualEdits,
+      );
+      setDraftLines((current) =>
+        current.map((currentLine, lineIndex) =>
+          lineIndex === index ? regenerated : currentLine,
+        ),
+      );
+    } catch (generationError) {
+      setLineError(errorMessage(generationError));
+    } finally {
+      setRegeneratingLine(null);
+    }
+  }
+
+  async function saveDrafts() {
+    if (regeneratingLine !== null || isSavingDrafts) return;
+    setIsSavingDrafts(true);
+    setLineError('');
+    try {
+      const updated = await Promise.all(
+        draftLines.map((line) =>
+          !line.isBreak && line.phoneticVersion === undefined
+            ? regenerateLyricLine(line, corrections)
+            : Promise.resolve(line),
+        ),
+      );
+      onSave(updated);
+      setIsEditingLines(false);
+    } catch (generationError) {
+      setLineError(errorMessage(generationError));
+    } finally {
+      setIsSavingDrafts(false);
+    }
+  }
+
+  const outdatedCount = lines.filter(
+    (line) =>
+      !line.isBreak &&
+      line.phoneticVersion !== PHONETIC_RULES_VERSION &&
+      !line.chinesePhoneticEdited,
+  ).length;
+
+  async function updateOutdatedPhonetics() {
+    if (!outdatedCount || isUpdatingPhonetics) return;
+    setIsUpdatingPhonetics(true);
+    setLineError('');
+    try {
+      const updated = await Promise.all(
+        lines.map((line) =>
+          !line.isBreak &&
+          line.phoneticVersion !== PHONETIC_RULES_VERSION &&
+          !line.chinesePhoneticEdited
+            ? regenerateLyricLine(line, corrections)
+            : Promise.resolve(line),
+        ),
+      );
+      onSave(updated);
+    } catch (generationError) {
+      setLineError(errorMessage(generationError));
+    } finally {
+      setIsUpdatingPhonetics(false);
+    }
   }
 
   const visibleLines = isEditingLines ? draftLines : lines;
@@ -749,7 +987,33 @@ function LyricsReader({
 
   return (
     <section aria-label="对照歌词">
+      {outdatedCount ? (
+        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-primary/25 bg-primary/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-white/72">
+            有 {outdatedCount} 句可更新为新版跟唱音，人工修改会保留。
+          </p>
+          <Button
+            className="h-10 rounded-full"
+            disabled={isUpdatingPhonetics}
+            onClick={() => void updateOutdatedPhonetics()}
+            size="sm"
+            type="button"
+          >
+            {isUpdatingPhonetics ? '正在更新…' : `更新 ${outdatedCount} 句`}
+          </Button>
+        </div>
+      ) : null}
+      {lineError ? (
+        <p className="mb-4 text-sm text-red-300" role="alert">
+          {lineError}
+        </p>
+      ) : null}
       <div className="mb-4 flex flex-wrap justify-end gap-2">
+        <PhoneticDictionaryDialog
+          corrections={corrections}
+          onDelete={onDeleteCorrection}
+          onSave={onSaveCorrection}
+        />
         {isEditingLines ? (
           <>
             <Button
@@ -762,13 +1026,11 @@ function LyricsReader({
             </Button>
             <Button
               className="h-11 rounded-full px-4"
-              onClick={() => {
-                onSave(draftLines);
-                setIsEditingLines(false);
-              }}
+              disabled={regeneratingLine !== null || isSavingDrafts}
+              onClick={() => void saveDrafts()}
               type="button"
             >
-              保存
+              {isSavingDrafts ? '正在保存…' : '保存'}
             </Button>
           </>
         ) : (
@@ -921,6 +1183,18 @@ function LyricsReader({
                     />
                   </label>
                   <label>
+                    <span className="sr-only">第 {index + 1} 行平假名读音</span>
+                    <Textarea
+                      className="min-h-11 resize-y border-white/12 bg-[#07122b] px-4 py-2 text-base leading-relaxed text-white/72"
+                      lang="ja"
+                      onChange={(event) =>
+                        updateLine(index, 'reading', event.target.value)
+                      }
+                      placeholder="平假名读音"
+                      value={line.reading}
+                    />
+                  </label>
+                  <label>
                     <span className="sr-only">第 {index + 1} 行罗马音</span>
                     <Textarea
                       className="min-h-11 resize-y border-white/12 bg-[#07122b] px-4 py-2 font-mono text-base leading-relaxed text-sky-200"
@@ -940,6 +1214,41 @@ function LyricsReader({
                       value={line.chinesePhonetic}
                     />
                   </label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      className="h-9 rounded-full"
+                      disabled={regeneratingLine !== null}
+                      onClick={() => void regenerateDraftLine(index)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      {regeneratingLine === index ? '正在重算…' : '重算本句'}
+                    </Button>
+                    <Button
+                      className="h-9 rounded-full"
+                      disabled={regeneratingLine !== null}
+                      onClick={() => void regenerateDraftLine(index, true)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      恢复自动
+                    </Button>
+                    {line.chinesePhoneticEdited && line.reading.trim() ? (
+                      <Button
+                        className="h-9 rounded-full"
+                        onClick={() =>
+                          onSaveCorrection(line.reading, line.chinesePhonetic)
+                        }
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        记住此写法
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               ) : (
                 <>

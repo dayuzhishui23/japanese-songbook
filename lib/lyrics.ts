@@ -1,6 +1,11 @@
-import { readingToChinese } from './phonetic';
+import {
+  katakanaToHiragana,
+  readingToChinese,
+  type PhoneticCorrections,
+} from './phonetic';
 
 export const MAX_LYRICS_LENGTH = 20_000;
+export const PHONETIC_RULES_VERSION = 2;
 
 export type LyricLine = {
   japanese: string;
@@ -9,6 +14,10 @@ export type LyricLine = {
   chinesePhonetic: string;
   isBreak: boolean;
   startTime?: number;
+  readingEdited?: boolean;
+  romajiEdited?: boolean;
+  chinesePhoneticEdited?: boolean;
+  phoneticVersion?: number;
 };
 
 type KuroshiroInstance = {
@@ -147,9 +156,40 @@ export function validateLyricsInput(rawLyrics: string): string {
   return rawLyrics.replace(/\r\n?/gu, '\n');
 }
 
-export async function convertLyrics(rawLyrics: string): Promise<LyricLine[]> {
-  const normalized = validateLyricsInput(rawLyrics);
+async function convertJapaneseLine(
+  japanese: string,
+  corrections: PhoneticCorrections,
+): Promise<LyricLine> {
   const converter = await getKuroshiro();
+  const [reading, phoneticReading, romaji] = await Promise.all([
+    converter.convert(japanese, { to: 'hiragana', mode: 'normal' }),
+    converter.convert(japanese, { to: 'hiragana', mode: 'spaced' }),
+    converter.convert(japanese, {
+      to: 'romaji',
+      mode: 'spaced',
+      romajiSystem: 'hepburn',
+    }),
+  ]);
+
+  return {
+    japanese,
+    reading,
+    romaji: romaji.replace(/\s+([、。！？,.!?])/gu, '$1').trim(),
+    chinesePhonetic: readingToChinese(phoneticReading, corrections),
+    isBreak: false,
+    readingEdited: false,
+    romajiEdited: false,
+    chinesePhoneticEdited: false,
+    phoneticVersion: PHONETIC_RULES_VERSION,
+  };
+}
+
+export async function convertLyrics(
+  rawLyrics: string,
+  corrections: PhoneticCorrections = {},
+): Promise<LyricLine[]> {
+  const normalized = validateLyricsInput(rawLyrics);
+  await getKuroshiro();
   const result: LyricLine[] = [];
 
   for (const sourceLine of normalized.split('\n')) {
@@ -164,27 +204,53 @@ export async function convertLyrics(rawLyrics: string): Promise<LyricLine[]> {
       continue;
     }
 
-    const japanese = sourceLine.trim();
-    const [reading, phoneticReading, romaji] = await Promise.all([
-      converter.convert(japanese, { to: 'hiragana', mode: 'normal' }),
-      converter.convert(japanese, { to: 'hiragana', mode: 'spaced' }),
-      converter.convert(japanese, {
-        to: 'romaji',
-        mode: 'spaced',
-        romajiSystem: 'hepburn',
-      }),
-    ]);
-
-    result.push({
-      japanese,
-      reading,
-      romaji: romaji.replace(/\s+([、。！？,.!?])/gu, '$1').trim(),
-      chinesePhonetic: readingToChinese(phoneticReading),
-      isBreak: false,
-    });
+    result.push(await convertJapaneseLine(sourceLine.trim(), corrections));
   }
 
   return result;
+}
+
+export async function regenerateLyricLine(
+  line: LyricLine,
+  corrections: PhoneticCorrections = {},
+  resetManualEdits = false,
+): Promise<LyricLine> {
+  if (line.isBreak) return line;
+
+  if (resetManualEdits || !line.readingEdited) {
+    const generated = await convertJapaneseLine(line.japanese, corrections);
+    return {
+      ...generated,
+      startTime: line.startTime,
+      romaji:
+        !resetManualEdits && line.romajiEdited ? line.romaji : generated.romaji,
+      chinesePhonetic:
+        !resetManualEdits && line.chinesePhoneticEdited
+          ? line.chinesePhonetic
+          : generated.chinesePhonetic,
+      romajiEdited: !resetManualEdits && Boolean(line.romajiEdited),
+      chinesePhoneticEdited:
+        !resetManualEdits && Boolean(line.chinesePhoneticEdited),
+    };
+  }
+
+  const reading = katakanaToHiragana(line.reading.trim());
+  const converter = await getKuroshiro();
+  const romaji = await converter.convert(reading, {
+    to: 'romaji',
+    mode: 'spaced',
+    romajiSystem: 'hepburn',
+  });
+
+  return {
+    ...line,
+    reading,
+    romaji: line.romajiEdited ? line.romaji : romaji.trim(),
+    chinesePhonetic: line.chinesePhoneticEdited
+      ? line.chinesePhonetic
+      : readingToChinese(reading, corrections),
+    phoneticVersion: PHONETIC_RULES_VERSION,
+  };
 }
 
 export function lyricLinesToRawText(lines: LyricLine[]): string {

@@ -81,6 +81,12 @@ const VOWEL_GROUPS = [
   'おこごそぞとどのほぼぽもよろをょぉ',
 ] as const;
 
+export type PhoneticCorrections = Record<string, string>;
+
+export function normalizeReadingKey(reading: string): string {
+  return katakanaToHiragana(reading).replace(/\s+/gu, '').trim();
+}
+
 function moraVowel(mora: string): string | undefined {
   const last = mora.at(-1) ?? '';
   const index = VOWEL_GROUPS.findIndex((group) => group.includes(last));
@@ -151,10 +157,18 @@ export function katakanaToHiragana(value: string): string {
     .join('');
 }
 
-export function readingToChinese(reading: string): string {
+export function readingToChinese(
+  reading: string,
+  corrections: PhoneticCorrections = {},
+): string {
   const normalized = katakanaToHiragana(reading);
+  const exactCorrection = corrections[normalizeReadingKey(normalized)];
+  if (exactCorrection) return exactCorrection;
+
   const output = normalized.split(/(\s+)/u).map((part) => {
     if (/^\s+$/u.test(part)) return ' ';
+    const correction = corrections[normalizeReadingKey(part)];
+    if (correction) return correction;
     if (part === 'は') return '哇';
     if (part === 'へ') return '诶';
     if (part === 'を') return '哦';

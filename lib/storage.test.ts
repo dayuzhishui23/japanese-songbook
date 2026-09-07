@@ -5,6 +5,7 @@ import {
   createDefaultLibrary,
   LEGACY_LYRICS_STORAGE_KEY,
   loadSongLibrary,
+  PREVIOUS_SONG_LIBRARY_STORAGE_KEY,
   saveSongLibrary,
   SONG_LIBRARY_STORAGE_KEY,
 } from './storage';
@@ -21,9 +22,56 @@ function fakeStorage(initial: Record<string, string> = {}) {
 
 void test('creates Lemon as the initial empty song', () => {
   const library = createDefaultLibrary();
-  assert.equal(library.version, 2);
+  assert.equal(library.version, 3);
   assert.equal(library.songs[0]?.title, 'Lemon');
   assert.equal(library.songs[0]?.rawLyrics, '');
+});
+
+void test('migrates a version 2 song library and starts an empty correction dictionary', () => {
+  const previous = {
+    version: 2,
+    activeSongId: 'song-2',
+    songs: [
+      {
+        id: 'song-2',
+        title: '二曲目',
+        artist: '歌手',
+        officialUrl: '',
+        mvUrl: '',
+        rawLyrics: 'かな',
+        lines: [
+          {
+            japanese: 'かな',
+            reading: 'かな',
+            romaji: 'kana',
+            chinesePhonetic: '我改过的音',
+            isBreak: false,
+          },
+          {
+            japanese: 'かな',
+            reading: 'かな',
+            romaji: 'kana',
+            chinesePhonetic: '卡那',
+            isBreak: false,
+          },
+        ],
+        updatedAt: '2026-09-07T00:00:00.000Z',
+      },
+    ],
+  };
+  const storage = fakeStorage({
+    [PREVIOUS_SONG_LIBRARY_STORAGE_KEY]: JSON.stringify(previous),
+  });
+
+  const library = loadSongLibrary(storage);
+  assert.equal(library.version, 3);
+  assert.deepEqual(library.phoneticCorrections, {});
+  assert.equal(library.songs[0]?.title, '二曲目');
+  assert.equal(library.songs[0]?.lines[0]?.chinesePhoneticEdited, true);
+  assert.equal(library.songs[0]?.lines[0]?.readingEdited, true);
+  assert.equal(library.songs[0]?.lines[1]?.chinesePhoneticEdited, false);
+  assert.equal(library.songs[0]?.lines[1]?.phoneticVersion, undefined);
+  assert.equal(storage.values.has(PREVIOUS_SONG_LIBRARY_STORAGE_KEY), false);
 });
 
 void test('saves and restores a multi-song library', () => {
