@@ -35,7 +35,12 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { convertLyrics, MAX_LYRICS_LENGTH, type LyricLine } from '@/lib/lyrics';
+import {
+  convertLyrics,
+  lyricLinesToRawText,
+  MAX_LYRICS_LENGTH,
+  type LyricLine,
+} from '@/lib/lyrics';
 import {
   createDefaultLibrary,
   loadSongLibrary,
@@ -263,6 +268,25 @@ export default function Home() {
     setIsEditing(true);
   }
 
+  function saveEditedLines(editedLines: LyricLine[]) {
+    if (!activeSong) return;
+    const updatedRawLyrics = lyricLinesToRawText(editedLines);
+    persist({
+      ...library,
+      songs: library.songs.map((song) =>
+        song.id === activeSong.id
+          ? {
+              ...song,
+              rawLyrics: updatedRawLyrics,
+              lines: editedLines,
+              updatedAt: new Date().toISOString(),
+            }
+          : song,
+      ),
+    });
+    setRawLyrics(updatedRawLyrics);
+  }
+
   async function handleSubmit(event: { preventDefault(): void }) {
     event.preventDefault();
     setIsGenerating(true);
@@ -310,9 +334,11 @@ export default function Home() {
               />
             ) : (
               <LyricsReader
+                key={activeSong.id}
                 lines={activeSong.lines}
                 onClear={clearCurrentLyrics}
                 onEdit={() => setIsEditing(true)}
+                onSave={saveEditedLines}
               />
             )}
           </>
@@ -638,52 +664,111 @@ function LyricsReader({
   lines,
   onClear,
   onEdit,
+  onSave,
 }: {
   lines: LyricLine[];
   onClear: () => void;
   onEdit: () => void;
+  onSave: (lines: LyricLine[]) => void;
 }) {
+  const [isEditingLines, setIsEditingLines] = useState(false);
+  const [draftLines, setDraftLines] = useState<LyricLine[]>([]);
+
+  function startEditing() {
+    setDraftLines(lines.map((line) => ({ ...line })));
+    setIsEditingLines(true);
+  }
+
+  function updateLine(
+    index: number,
+    field: 'japanese' | 'romaji' | 'chinesePhonetic',
+    value: string,
+  ) {
+    setDraftLines((current) =>
+      current.map((line, lineIndex) =>
+        lineIndex === index ? { ...line, [field]: value } : line,
+      ),
+    );
+  }
+
+  const visibleLines = isEditingLines ? draftLines : lines;
+
   return (
     <section aria-label="对照歌词">
       <div className="mb-4 flex flex-wrap justify-end gap-2">
-        <Button
-          className="h-11 rounded-full px-4"
-          onClick={onEdit}
-          type="button"
-          variant="outline"
-        >
-          <ArrowLeft aria-hidden="true" /> 重新编辑
-        </Button>
-        <AlertDialog>
-          <AlertDialogTrigger
-            render={
-              <Button
-                className="h-11 rounded-full px-4"
-                type="button"
-                variant="destructive"
-              />
-            }
+        {isEditingLines ? (
+          <>
+            <Button
+              className="h-11 rounded-full px-4"
+              onClick={() => setIsEditingLines(false)}
+              type="button"
+              variant="outline"
+            >
+              取消
+            </Button>
+            <Button
+              className="h-11 rounded-full px-4"
+              onClick={() => {
+                onSave(draftLines);
+                setIsEditingLines(false);
+              }}
+              type="button"
+            >
+              保存
+            </Button>
+          </>
+        ) : (
+          <Button
+            className="h-11 rounded-full px-4"
+            onClick={startEditing}
+            type="button"
+            variant="outline"
           >
-            <Trash2 aria-hidden="true" /> 清除此歌歌词
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>清除此歌的本机歌词？</AlertDialogTitle>
-              <AlertDialogDescription>
-                歌曲资料会保留，但粘贴的歌词和生成结果将被删除。
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>取消</AlertDialogCancel>
-              <AlertDialogAction onClick={onClear} variant="destructive">
-                确认清除
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+            <Pencil aria-hidden="true" /> 编辑歌词
+          </Button>
+        )}
+        {!isEditingLines ? (
+          <>
+            <Button
+              className="h-11 rounded-full px-4"
+              onClick={onEdit}
+              type="button"
+              variant="outline"
+            >
+              <ArrowLeft aria-hidden="true" /> 重新生成
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger
+                render={
+                  <Button
+                    className="h-11 rounded-full px-4"
+                    type="button"
+                    variant="destructive"
+                  />
+                }
+              >
+                <Trash2 aria-hidden="true" /> 清除此歌歌词
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>清除此歌的本机歌词？</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    歌曲资料会保留，但粘贴的歌词和生成结果将被删除。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  <AlertDialogAction onClick={onClear} variant="destructive">
+                    确认清除
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
+        ) : null}
       </div>
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-card shadow-[0_24px_80px_rgb(2_6_23/28%)]">
-        {lines.map((line, index) =>
+        {visibleLines.map((line, index) =>
           line.isBreak ? (
             <div
               key={`break-${index}`}
@@ -692,21 +777,59 @@ function LyricsReader({
             />
           ) : (
             <article
-              key={`${index}-${line.japanese}`}
+              key={index}
               className="border-b border-white/[0.07] px-5 py-7 last:border-b-0 sm:px-8"
             >
-              <p
-                lang="ja"
-                className="text-[1.35rem] leading-relaxed font-semibold tracking-[0.015em] text-white sm:text-[1.6rem]"
-              >
-                {line.japanese}
-              </p>
-              <p className="mt-2 font-mono text-base leading-relaxed text-sky-200/78 sm:text-lg">
-                {line.romaji}
-              </p>
-              <p className="mt-2 text-lg leading-relaxed font-medium tracking-[0.06em] text-primary sm:text-xl">
-                {line.chinesePhonetic}
-              </p>
+              {isEditingLines ? (
+                <div className="grid gap-3">
+                  <label>
+                    <span className="sr-only">第 {index + 1} 行日语</span>
+                    <Textarea
+                      className="min-h-12 resize-y border-white/12 bg-[#07122b] px-4 py-3 text-[1.2rem] leading-relaxed font-semibold text-white"
+                      lang="ja"
+                      onChange={(event) =>
+                        updateLine(index, 'japanese', event.target.value)
+                      }
+                      value={line.japanese}
+                    />
+                  </label>
+                  <label>
+                    <span className="sr-only">第 {index + 1} 行罗马音</span>
+                    <Textarea
+                      className="min-h-11 resize-y border-white/12 bg-[#07122b] px-4 py-2 font-mono text-base leading-relaxed text-sky-200"
+                      onChange={(event) =>
+                        updateLine(index, 'romaji', event.target.value)
+                      }
+                      value={line.romaji}
+                    />
+                  </label>
+                  <label>
+                    <span className="sr-only">第 {index + 1} 行中文跟唱音</span>
+                    <Textarea
+                      className="min-h-11 resize-y border-primary/25 bg-primary/[0.05] px-4 py-2 text-lg leading-relaxed font-medium text-primary"
+                      onChange={(event) =>
+                        updateLine(index, 'chinesePhonetic', event.target.value)
+                      }
+                      value={line.chinesePhonetic}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <>
+                  <p
+                    lang="ja"
+                    className="text-[1.35rem] leading-relaxed font-semibold tracking-[0.015em] text-white sm:text-[1.6rem]"
+                  >
+                    {line.japanese}
+                  </p>
+                  <p className="mt-2 font-mono text-base leading-relaxed text-sky-200/78 sm:text-lg">
+                    {line.romaji}
+                  </p>
+                  <p className="mt-2 text-lg leading-relaxed font-medium tracking-[0.06em] text-primary sm:text-xl">
+                    {line.chinesePhonetic}
+                  </p>
+                </>
+              )}
             </article>
           ),
         )}

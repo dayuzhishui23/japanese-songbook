@@ -14,7 +14,11 @@ type KuroshiroInstance = {
   init(analyzer: unknown): Promise<void>;
   convert(
     text: string,
-    options: { to: 'hiragana' | 'romaji'; mode?: 'normal' | 'spaced'; romajiSystem?: 'hepburn' },
+    options: {
+      to: 'hiragana' | 'romaji';
+      mode?: 'normal' | 'spaced';
+      romajiSystem?: 'hepburn';
+    },
   ): Promise<string>;
 };
 
@@ -23,7 +27,9 @@ let kuroshiroPromise: Promise<KuroshiroInstance> | null = null;
 type KuroshiroBrowserWindow = Window & {
   kuromoji?: {
     builder(options: { dicPath: string }): {
-      build(callback: (error: Error | null, tokenizer: KuromojiTokenizer) => void): void;
+      build(
+        callback: (error: Error | null, tokenizer: KuromojiTokenizer) => void,
+      ): void;
     };
   };
 };
@@ -37,7 +43,9 @@ function loadKuromojiScript(): Promise<void> {
   if (browserWindow.kuromoji) return Promise.resolve();
 
   return new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>('script[data-lyrics-library="kuromoji"]');
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[data-lyrics-library="kuromoji"]',
+    );
     const script = existing ?? document.createElement('script');
 
     const handleLoad = () => {
@@ -61,7 +69,10 @@ function loadKuromojiScript(): Promise<void> {
   });
 }
 
-async function createKuromojiAnalyzer(): Promise<{ init(): Promise<void>; parse(text: string): Promise<Array<Record<string, unknown>>> }> {
+async function createKuromojiAnalyzer(): Promise<{
+  init(): Promise<void>;
+  parse(text: string): Promise<Array<Record<string, unknown>>>;
+}> {
   await loadKuromojiScript();
   const browserWindow = window as KuroshiroBrowserWindow;
   const builder = browserWindow.kuromoji?.builder({ dicPath: '/kuromoji/' });
@@ -90,13 +101,19 @@ async function createKuromojiAnalyzer(): Promise<{ init(): Promise<void>; parse(
 
 async function getKuroshiro(): Promise<KuroshiroInstance> {
   if (!kuroshiroPromise) {
-    kuroshiroPromise = Promise.all([import('kuroshiro'), createKuromojiAnalyzer()])
+    kuroshiroPromise = Promise.all([
+      import('kuroshiro'),
+      createKuromojiAnalyzer(),
+    ])
       .then(async ([kuroshiroModule, analyzer]) => {
         const moduleDefault = kuroshiroModule.default as unknown;
-        const Kuroshiro = (typeof moduleDefault === 'function'
-          ? moduleDefault
-          : (moduleDefault as { default?: unknown })?.default) as new () => KuroshiroInstance;
-        if (typeof Kuroshiro !== 'function') throw new Error('日语读音组件初始化失败。');
+        const Kuroshiro = (
+          typeof moduleDefault === 'function'
+            ? moduleDefault
+            : (moduleDefault as { default?: unknown })?.default
+        ) as new () => KuroshiroInstance;
+        if (typeof Kuroshiro !== 'function')
+          throw new Error('日语读音组件初始化失败。');
         const converter = new Kuroshiro();
         await converter.init(analyzer);
         return converter;
@@ -142,7 +159,11 @@ export async function convertLyrics(rawLyrics: string): Promise<LyricLine[]> {
     const japanese = sourceLine.trim();
     const [reading, romaji] = await Promise.all([
       converter.convert(japanese, { to: 'hiragana', mode: 'normal' }),
-      converter.convert(japanese, { to: 'romaji', mode: 'spaced', romajiSystem: 'hepburn' }),
+      converter.convert(japanese, {
+        to: 'romaji',
+        mode: 'spaced',
+        romajiSystem: 'hepburn',
+      }),
     ]);
 
     result.push({
@@ -155,4 +176,8 @@ export async function convertLyrics(rawLyrics: string): Promise<LyricLine[]> {
   }
 
   return result;
+}
+
+export function lyricLinesToRawText(lines: LyricLine[]): string {
+  return lines.map((line) => (line.isBreak ? '' : line.japanese)).join('\n');
 }
