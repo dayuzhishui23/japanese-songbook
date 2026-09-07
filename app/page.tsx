@@ -13,6 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 
 import {
   AlertDialog,
@@ -1531,6 +1532,7 @@ function LyricsReader({
           {lineError}
         </p>
       ) : null}
+      <AnimalPlayground />
       <div className="mb-4 flex flex-wrap justify-end gap-2">
         <PhoneticDictionaryDialog
           corrections={corrections}
@@ -1856,6 +1858,23 @@ function LyricsReader({
         )}
       </div>
     </section>
+  );
+}
+
+function AnimalPlayground() {
+  return (
+    <div aria-hidden="true" className="animal-playground mb-2 overflow-hidden">
+      <div className="animal-chase">
+        <Image
+          alt=""
+          className="animal-chase-art"
+          draggable={false}
+          height="180"
+          src="./animal-chase.png"
+          width="337"
+        />
+      </div>
+    </div>
   );
 }
 
