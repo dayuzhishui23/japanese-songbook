@@ -1,10 +1,7 @@
 'use client';
 
 import {
-  ArrowLeft,
   AudioLines,
-  ChevronLeft,
-  ChevronRight,
   Download,
   FileUp,
   LoaderCircle,
@@ -13,7 +10,6 @@ import {
   Pencil,
   Play,
   Search,
-  TimerReset,
   Trash2,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -44,7 +40,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   activeLyricIndexAtTime,
-  adjacentLyricIndex,
   convertLyrics,
   getLinePlaybackRange,
   lyricLinesToRawText,
@@ -52,7 +47,6 @@ import {
   PHONETIC_RULES_VERSION,
   prepareLyricsConverter,
   regenerateLyricLine,
-  setLyricStartTime,
   type LyricLine,
 } from '@/lib/lyrics';
 import { normalizeReadingKey, readingToChinese } from '@/lib/phonetic';
@@ -476,7 +470,14 @@ export default function Home() {
             </h1>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
-            <LibraryBackupDialog library={library} onImport={importLibrary} />
+            <MoreActionsDialog
+              library={library}
+              onClear={clearCurrentLyrics}
+              onDelete={deleteSong}
+              onImport={importLibrary}
+              onUpdate={updateSong}
+              song={activeSong}
+            />
             <OnlineSongSearchDialog
               onChoose={addOnlineSong}
               onManual={addManualSong}
@@ -491,36 +492,28 @@ export default function Home() {
         />
 
         {activeSong ? (
-          <>
-            <SongHeader
-              onDelete={deleteSong}
-              onUpdate={updateSong}
+          isEditing ? (
+            <LyricsEditor
+              error={error}
+              isGenerating={isGenerating}
+              onLyricsChange={setRawLyrics}
+              onSubmit={handleSubmit}
+              rawLyrics={rawLyrics}
+              songTitle={activeSong.title}
+            />
+          ) : (
+            <LyricsReader
+              corrections={library.phoneticCorrections}
+              key={activeSong.id}
+              lines={activeSong.lines}
+              onDeleteCorrection={deletePhoneticCorrection}
+              onEdit={() => setIsEditing(true)}
+              onSave={saveEditedLines}
+              onSaveCorrection={savePhoneticCorrection}
+              onSaveWithCorrections={saveLinesAndCorrections}
               song={activeSong}
             />
-            {isEditing ? (
-              <LyricsEditor
-                error={error}
-                isGenerating={isGenerating}
-                onLyricsChange={setRawLyrics}
-                onSubmit={handleSubmit}
-                rawLyrics={rawLyrics}
-                songTitle={activeSong.title}
-              />
-            ) : (
-              <LyricsReader
-                corrections={library.phoneticCorrections}
-                key={activeSong.id}
-                lines={activeSong.lines}
-                onClear={clearCurrentLyrics}
-                onDeleteCorrection={deletePhoneticCorrection}
-                onEdit={() => setIsEditing(true)}
-                onSave={saveEditedLines}
-                onSaveCorrection={savePhoneticCorrection}
-                onSaveWithCorrections={saveLinesAndCorrections}
-                song={activeSong}
-              />
-            )}
-          </>
+          )
         ) : (
           <EmptyLibrary onChoose={addOnlineSong} onManual={addManualSong} />
         )}
@@ -565,53 +558,6 @@ function SongShelf({
             </button>
           );
         })}
-      </div>
-    </section>
-  );
-}
-
-function SongHeader({
-  onDelete,
-  onUpdate,
-  song,
-}: {
-  onDelete: () => void;
-  onUpdate: (draft: SongDraft) => void;
-  song: SongRecord;
-}) {
-  return (
-    <section className="mb-5 flex flex-col gap-4 rounded-2xl border border-foreground/10 bg-card p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-      <div className="min-w-0">
-        <h2 className="truncate text-3xl font-semibold tracking-[-0.03em] text-foreground sm:text-4xl">
-          {song.title}
-        </h2>
-        <p className="mt-2 text-lg text-foreground/62">{song.artist}</p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <SongFormDialog initial={song} onSave={onUpdate} />
-        <AlertDialog>
-          <AlertDialogTrigger
-            render={
-              <Button className="h-11 rounded-full" size="sm" variant="ghost" />
-            }
-          >
-            <Trash2 aria-hidden="true" /> 删除歌曲
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>删除《{song.title}》？</AlertDialogTitle>
-              <AlertDialogDescription>
-                本机歌词也会删除，无法撤销。
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>取消</AlertDialogCancel>
-              <AlertDialogAction onClick={onDelete} variant="destructive">
-                确认删除
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     </section>
   );
@@ -705,12 +651,20 @@ function FormField({
   );
 }
 
-function LibraryBackupDialog({
+function MoreActionsDialog({
   library,
+  onClear,
+  onDelete,
   onImport,
+  onUpdate,
+  song,
 }: {
   library: SongLibrary;
+  onClear: () => void;
+  onDelete: () => void;
   onImport: (library: SongLibrary) => void;
+  onUpdate: (draft: SongDraft) => void;
+  song: SongRecord | null;
 }) {
   const [open, setOpen] = useState(false);
   const [candidate, setCandidate] = useState<SongLibrary | null>(null);
@@ -762,64 +716,130 @@ function LibraryBackupDialog({
       <DialogTrigger
         render={<Button className="h-11 rounded-full px-4" variant="ghost" />}
       >
-        备份
+        更多
       </DialogTrigger>
       <DialogContent className="max-w-lg border-foreground/12 bg-card p-6 sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-xl text-foreground">
-            本机歌本备份
-          </DialogTitle>
-          <DialogDescription>
-            保存歌曲、校音和时间点，不包含音频文件。
-          </DialogDescription>
+          <DialogTitle className="text-xl text-foreground">更多</DialogTitle>
+          <DialogDescription>管理当前歌曲和本机歌本。</DialogDescription>
         </DialogHeader>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <Button
-            className="h-12 rounded-full"
-            onClick={exportBackup}
-            type="button"
-            variant="outline"
-          >
-            <Download aria-hidden="true" /> 导出备份
-          </Button>
-          <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-full bg-foreground/8 px-5 text-sm font-medium text-foreground transition hover:bg-foreground/12 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary">
-            <FileUp aria-hidden="true" className="size-4" /> 选择备份文件
-            <input
-              accept="application/json,.json"
-              className="sr-only"
-              onChange={(event) => {
-                void chooseBackup(event.target.files?.[0]);
-                event.target.value = '';
-              }}
-              type="file"
-            />
-          </label>
-        </div>
-        {backupError ? (
-          <p className="mt-4 text-sm text-red-700" role="alert">
-            {backupError}
-          </p>
-        ) : null}
-        {candidate ? (
-          <div className="mt-5 rounded-2xl border border-primary/25 bg-primary/[0.06] p-4">
-            <p className="truncate text-sm text-foreground/72">{fileName}</p>
-            <p className="mt-1 text-sm text-foreground/48">
-              {candidate.songs.length} 首歌曲 ·{' '}
-              {Object.keys(candidate.phoneticCorrections).length} 条校音
-            </p>
-            <Button
-              className="mt-4 h-11 w-full rounded-full"
-              onClick={() => {
-                onImport(candidate);
-                setOpen(false);
-              }}
-              type="button"
-              variant="destructive"
-            >
-              覆盖本机歌本
-            </Button>
+        {song ? (
+          <div className="mt-5 flex flex-wrap gap-2">
+            <SongFormDialog initial={song} onSave={onUpdate} />
+            <AlertDialog>
+              <AlertDialogTrigger
+                render={
+                  <Button className="h-11 rounded-full" variant="outline" />
+                }
+              >
+                清除歌词
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    清除《{song.title}》的歌词？
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    歌名会保留，但歌词和生成结果将被删除。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => {
+                      onClear();
+                      setOpen(false);
+                    }}
+                    variant="destructive"
+                  >
+                    确认清除
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog>
+              <AlertDialogTrigger
+                render={
+                  <Button className="h-11 rounded-full" variant="ghost" />
+                }
+              >
+                <Trash2 aria-hidden="true" /> 删除歌曲
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>删除《{song.title}》？</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    本机歌词也会删除，无法撤销。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => {
+                      onDelete();
+                      setOpen(false);
+                    }}
+                    variant="destructive"
+                  >
+                    确认删除
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         ) : null}
+        <div className="mt-5 border-t border-foreground/10 pt-5">
+          <p className="mb-3 text-sm font-medium text-foreground/72">
+            本机歌本备份
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <Button
+              className="h-12 rounded-full"
+              onClick={exportBackup}
+              type="button"
+              variant="outline"
+            >
+              <Download aria-hidden="true" /> 导出备份
+            </Button>
+            <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-full bg-foreground/8 px-5 text-sm font-medium text-foreground transition hover:bg-foreground/12 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary">
+              <FileUp aria-hidden="true" className="size-4" /> 选择备份文件
+              <input
+                accept="application/json,.json"
+                className="sr-only"
+                onChange={(event) => {
+                  void chooseBackup(event.target.files?.[0]);
+                  event.target.value = '';
+                }}
+                type="file"
+              />
+            </label>
+          </div>
+          {backupError ? (
+            <p className="mt-4 text-sm text-red-700" role="alert">
+              {backupError}
+            </p>
+          ) : null}
+          {candidate ? (
+            <div className="mt-5 rounded-2xl border border-primary/25 bg-primary/[0.06] p-4">
+              <p className="truncate text-sm text-foreground/72">{fileName}</p>
+              <p className="mt-1 text-sm text-foreground/48">
+                {candidate.songs.length} 首歌曲 ·{' '}
+                {Object.keys(candidate.phoneticCorrections).length} 条校音
+              </p>
+              <Button
+                className="mt-4 h-11 w-full rounded-full"
+                onClick={() => {
+                  onImport(candidate);
+                  setOpen(false);
+                }}
+                type="button"
+                variant="destructive"
+              >
+                覆盖本机歌本
+              </Button>
+            </div>
+          ) : null}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -1212,7 +1232,6 @@ function LyricsEditor({
 function LyricsReader({
   corrections,
   lines,
-  onClear,
   onDeleteCorrection,
   onEdit,
   onSave,
@@ -1222,7 +1241,6 @@ function LyricsReader({
 }: {
   corrections: Record<string, string>;
   lines: LyricLine[];
-  onClear: () => void;
   onDeleteCorrection: (reading: string) => void;
   onEdit: () => void;
   onSave: (lines: LyricLine[]) => void;
@@ -1468,48 +1486,6 @@ function LyricsReader({
 
   const visibleLines = isEditingLines ? draftLines : lines;
 
-  function markLine(index: number) {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const updated = setLyricStartTime(
-      linesRef.current,
-      index,
-      audio.currentTime,
-    );
-    linesRef.current = updated;
-    onSave(updated);
-    setActiveLineIndex(index);
-  }
-
-  function selectActiveLine(index: number) {
-    setActiveLineIndex(index);
-    requestAnimationFrame(() => {
-      document
-        .getElementById(`lyric-line-${index}`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  }
-
-  function moveActiveLine(direction: -1 | 1) {
-    const next = adjacentLyricIndex(lines, activeLineIndex, direction);
-    if (next !== null) selectActiveLine(next);
-  }
-
-  function markAndAdvance() {
-    const audio = audioRef.current;
-    const current = activeLineIndex ?? adjacentLyricIndex(lines, null, 1);
-    if (!audio || current === null) return;
-    const updated = setLyricStartTime(
-      linesRef.current,
-      current,
-      audio.currentTime,
-    );
-    linesRef.current = updated;
-    onSave(updated);
-    const next = adjacentLyricIndex(lines, current, 1);
-    if (next !== null) selectActiveLine(next);
-  }
-
   function playLine(index: number) {
     const audio = audioRef.current;
     if (!audio) return;
@@ -1519,19 +1495,6 @@ function LyricsReader({
     setStopAt(range.end);
     void audio.play();
   }
-
-  function clearTimings() {
-    const updated = linesRef.current.map((line) => ({
-      ...line,
-      startTime: undefined,
-    }));
-    linesRef.current = updated;
-    onSave(updated);
-    setStopAt(null);
-  }
-
-  const activeLine =
-    activeLineIndex === null ? null : (lines[activeLineIndex] ?? null);
 
   return (
     <section
@@ -1569,6 +1532,14 @@ function LyricsReader({
           <>
             <Button
               className="h-11 rounded-full px-4"
+              onClick={onEdit}
+              type="button"
+              variant="ghost"
+            >
+              重新生成
+            </Button>
+            <Button
+              className="h-11 rounded-full px-4"
               onClick={() => setIsEditingLines(false)}
               type="button"
               variant="outline"
@@ -1595,53 +1566,9 @@ function LyricsReader({
           </Button>
         )}
         {!isEditingLines ? (
-          <>
-            <Button
-              className="h-11 rounded-full px-4"
-              onClick={onEdit}
-              type="button"
-              variant="outline"
-            >
-              <ArrowLeft aria-hidden="true" /> 重新生成
-            </Button>
-            <AlertDialog>
-              <AlertDialogTrigger
-                render={
-                  <Button
-                    className="h-11 rounded-full px-4"
-                    type="button"
-                    variant="destructive"
-                  />
-                }
-              >
-                <Trash2 aria-hidden="true" /> 清除此歌歌词
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>清除此歌的本机歌词？</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    歌名会保留，但粘贴的歌词和生成结果将被删除。
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>取消</AlertDialogCancel>
-                  <AlertDialogAction onClick={onClear} variant="destructive">
-                    确认清除
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </>
-        ) : null}
-        {!isEditingLines ? (
           <Button
             className="h-11 rounded-full px-4"
-            onClick={() => {
-              setShowAudioSync((current) => !current);
-              setActiveLineIndex((current) =>
-                current === null ? adjacentLyricIndex(lines, null, 1) : current,
-              );
-            }}
+            onClick={() => setShowAudioSync((current) => !current)}
             type="button"
             variant={showAudioSync ? 'default' : 'outline'}
           >
@@ -1704,16 +1631,6 @@ function LyricsReader({
                 </p>
               )}
             </div>
-            {lines.some((line) => typeof line.startTime === 'number') ? (
-              <Button
-                className="h-11 rounded-full"
-                onClick={clearTimings}
-                type="button"
-                variant="ghost"
-              >
-                <TimerReset aria-hidden="true" /> 清除时间
-              </Button>
-            ) : null}
           </div>
           {audioError ? (
             <div
@@ -1736,51 +1653,6 @@ function LyricsReader({
                   重新连接
                 </Button>
               ) : null}
-            </div>
-          ) : null}
-          {audioUrl && activeLine && !activeLine.isBreak ? (
-            <div className="mt-3 grid gap-3 border-t border-foreground/10 pt-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
-              <div className="flex items-center gap-1">
-                <Button
-                  aria-label="上一句"
-                  className="size-10 rounded-full"
-                  disabled={
-                    adjacentLyricIndex(lines, activeLineIndex, -1) === null
-                  }
-                  onClick={() => moveActiveLine(-1)}
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <ChevronLeft aria-hidden="true" />
-                </Button>
-                <Button
-                  aria-label="下一句"
-                  className="size-10 rounded-full"
-                  disabled={
-                    adjacentLyricIndex(lines, activeLineIndex, 1) === null
-                  }
-                  onClick={() => moveActiveLine(1)}
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <ChevronRight aria-hidden="true" />
-                </Button>
-              </div>
-              <p
-                className="min-w-0 truncate text-base font-medium text-foreground"
-                lang="ja"
-              >
-                {activeLine.japanese}
-              </p>
-              <Button
-                className="h-11 rounded-full px-5"
-                onClick={markAndAdvance}
-                type="button"
-              >
-                标记并下一句
-              </Button>
             </div>
           ) : null}
         </div>
@@ -1953,22 +1825,7 @@ function LyricsReader({
                     </button>
                   )}
                   {showAudioSync ? (
-                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-foreground/[0.07] pt-4">
-                      <span className="min-w-16 font-mono text-sm text-foreground/48">
-                        {typeof line.startTime === 'number'
-                          ? formatTimestamp(line.startTime)
-                          : '--:--.-'}
-                      </span>
-                      <Button
-                        className="h-10 rounded-full"
-                        disabled={!audioUrl}
-                        onClick={() => markLine(index)}
-                        size="sm"
-                        type="button"
-                        variant="outline"
-                      >
-                        标记起点
-                      </Button>
+                    <div className="mt-4 border-t border-foreground/[0.07] pt-4">
                       <Button
                         className="h-10 rounded-full"
                         disabled={
@@ -1989,17 +1846,8 @@ function LyricsReader({
           ),
         )}
       </div>
-      <p className="mt-3 text-sm text-foreground/42">
-        · 短停顿　— 长音　中文为跟唱近似音　在线来源可能失效
-      </p>
     </section>
   );
-}
-
-function formatTimestamp(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const remaining = (seconds % 60).toFixed(1).padStart(4, '0');
-  return `${String(minutes).padStart(2, '0')}:${remaining}`;
 }
 
 function formatDuration(seconds: number): string {
