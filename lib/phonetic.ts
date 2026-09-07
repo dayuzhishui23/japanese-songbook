@@ -1,36 +1,144 @@
-const KANA_TO_CHINESE: Record<string, string> = {
-  あ: '阿', い: '衣', う: '呜', え: '诶', お: '哦',
-  か: '卡', き: '七', く: '哭', け: '开', こ: '扩',
-  さ: '撒', し: '西', す: '斯', せ: '塞', そ: '嗖',
-  た: '塔', ち: '七', つ: '次', て: '忒', と: '偷',
-  な: '那', に: '你', ぬ: '奴', ね: '内', の: '诺',
-  は: '哈', ひ: '西', ふ: '夫', へ: '嘿', ほ: '吼',
-  ま: '吗', み: '米', む: '木', め: '梅', も: '摸',
-  や: '呀', ゆ: '优', よ: '哟',
-  ら: '拉', り: '里', る: '噜', れ: '雷', ろ: '咯',
-  わ: '哇', を: '哦', ん: '嗯',
-  が: '嘎', ぎ: '吉', ぐ: '古', げ: '该', ご: '够',
-  ざ: '杂', じ: '几', ず: '兹', ぜ: '贼', ぞ: '奏',
-  だ: '达', ぢ: '几', づ: '兹', で: '呆', ど: '多',
-  ば: '巴', び: '比', ぶ: '不', べ: '贝', ぼ: '波',
-  ぱ: '趴', ぴ: '批', ぷ: '扑', ぺ: '佩', ぽ: '坡',
-  ぁ: '阿', ぃ: '衣', ぅ: '呜', ぇ: '诶', ぉ: '哦',
-  ゔ: '乌',
-  きゃ: '克呀', きゅ: '克优', きょ: '克哟',
-  しゃ: '夏', しゅ: '咻', しょ: '修',
-  ちゃ: '恰', ちゅ: '丘', ちょ: '秋',
-  にゃ: '尼呀', にゅ: '尼优', にょ: '尼哟',
-  ひゃ: '西呀', ひゅ: '西优', ひょ: '西哟',
-  みゃ: '米呀', みゅ: '米优', みょ: '米哟',
-  りゃ: '里呀', りゅ: '里优', りょ: '里哟',
-  ぎゃ: '吉呀', ぎゅ: '吉优', ぎょ: '吉哟',
-  じゃ: '加', じゅ: '久', じょ: '就',
-  びゃ: '比呀', びゅ: '比优', びょ: '比哟',
-  ぴゃ: '批呀', ぴゅ: '批优', ぴょ: '批哟',
-  ふぁ: '法', ふぃ: '菲', ふぇ: '费', ふぉ: '佛',
-  てぃ: '提', でぃ: '迪', とぅ: '图', どぅ: '杜',
-  うぃ: '威', うぇ: '维', うぉ: '沃',
-};
+const KANA_ROWS = [
+  ['あいうえお', '阿伊乌诶哦'],
+  ['かきくけこ', '卡其库凯扣'],
+  ['さしすせそ', '撒西苏塞搜'],
+  ['たちつてと', '塔奇次忒偷'],
+  ['なにぬねの', '那尼努内诺'],
+  ['はひふへほ', '哈希夫嘿吼'],
+  ['まみむめも', '马米木咩摸'],
+  ['やゆよ', '呀优哟'],
+  ['らりるれろ', '拉里路雷罗'],
+  ['わをん', '哇哦嗯'],
+  ['がぎぐげご', '嘎给古给够'],
+  ['ざじずぜぞ', '扎吉兹贼奏'],
+  ['だぢづでど', '达吉兹得多'],
+  ['ばびぶべぼ', '巴比布贝波'],
+  ['ぱぴぷぺぽ', '趴批普佩坡'],
+  ['ぁぃぅぇぉ', '阿伊乌诶哦'],
+  ['ゔ', '乌'],
+] as const;
+
+const CONTRACTED_ROWS = [
+  'きゃ:克呀 きゅ:克优 きょ:克哟 しゃ:夏 しゅ:咻 しょ:修',
+  'ちゃ:恰 ちゅ:秋 ちょ:巧 にゃ:尼呀 にゅ:尼优 にょ:尼哟',
+  'ひゃ:希呀 ひゅ:希优 ひょ:希哟 みゃ:米呀 みゅ:米优 みょ:米哟',
+  'りゃ:俩 りゅ:留 りょ:料 ぎゃ:给呀 ぎゅ:给优 ぎょ:给哟',
+  'じゃ:加 じゅ:朱 じょ:就 びゃ:比呀 びゅ:比优 びょ:比哟',
+  'ぴゃ:批呀 ぴゅ:批优 ぴょ:批哟 ふぁ:发 ふぃ:飞 ふぇ:费 ふぉ:佛',
+  'てぃ:提 でぃ:迪 とぅ:图 どぅ:杜 うぃ:威 うぇ:喂 うぉ:窝',
+] as const;
+
+const NASAL_ROWS = [
+  ['あいうえお', '安音嗯恩翁'],
+  ['かきくけこ', '康金坤肯空'],
+  ['がぎぐげご', '刚银滚根共'],
+  ['さしすせそ', '桑心孙森松'],
+  ['ざじずぜぞ', '脏进尊曾宗'],
+  ['たちつてと', '汤亲村天通'],
+  ['だぢづでど', '当进尊电咚'],
+  ['なにぬねの', '囊宁嫩年农'],
+  ['はひふへほ', '航欣婚亨轰'],
+  ['ばびぶべぼ', '邦宾文边崩'],
+  ['ぱぴぷぺぽ', '胖拼喷片彭'],
+  ['まみむめも', '芒明蒙绵萌'],
+  ['やゆよ', '杨云永'],
+  ['らりるれろ', '朗林轮连隆'],
+  ['わ', '汪'],
+] as const;
+
+function buildCharacterMap(rows: ReadonlyArray<readonly [string, string]>) {
+  return new Map(
+    rows.flatMap(([kana, chinese]) =>
+      Array.from(
+        kana,
+        (character, index) => [character, Array.from(chinese)[index]] as const,
+      ),
+    ),
+  );
+}
+
+const KANA_TO_CHINESE = buildCharacterMap(KANA_ROWS);
+const KANA_WITH_N = new Map<string, string>(
+  NASAL_ROWS.flatMap(([kana, chinese]) =>
+    Array.from(
+      kana,
+      (character, index) =>
+        [`${character}ん`, Array.from(chinese)[index]] as const,
+    ),
+  ),
+);
+const CONTRACTED_TO_CHINESE = new Map(
+  CONTRACTED_ROWS.flatMap((row) =>
+    row.split(' ').map((entry) => entry.split(':') as [string, string]),
+  ),
+);
+
+const VOWEL_GROUPS = [
+  'あかがさざただなはばぱまやらわゃぁ',
+  'いきぎしじちぢにひびぴみりぃ',
+  'うくぐすずつづぬふぶぷむゆるゅぅ',
+  'えけげせぜてでねへべぺめれぇ',
+  'おこごそぞとどのほぼぽもよろをょぉ',
+] as const;
+
+function moraVowel(mora: string): string | undefined {
+  const last = mora.at(-1) ?? '';
+  const index = VOWEL_GROUPS.findIndex((group) => group.includes(last));
+  return ['a', 'i', 'u', 'e', 'o'][index];
+}
+
+function convertWord(word: string): string {
+  if (word.startsWith('こんにちは')) {
+    return `空尼奇哇${convertWord(word.slice('こんにちは'.length))}`;
+  }
+
+  const output: string[] = [];
+  let previousMora = '';
+
+  for (let index = 0; index < word.length; index += 1) {
+    const character = word[index];
+    if (character === 'っ') {
+      output.push('·');
+      previousMora = '';
+      continue;
+    }
+    if (character === 'ー') {
+      output.push('—');
+      continue;
+    }
+
+    const pair = word.slice(index, index + 2);
+    const nasal = KANA_WITH_N.get(pair);
+    if (nasal) {
+      output.push(nasal);
+      previousMora = '';
+      index += 1;
+      continue;
+    }
+    if (
+      (character === 'う' && moraVowel(previousMora) === 'o') ||
+      (character === 'い' && moraVowel(previousMora) === 'e')
+    ) {
+      output.push('—');
+      previousMora = character;
+      continue;
+    }
+
+    const contracted = CONTRACTED_TO_CHINESE.get(pair);
+    if (contracted) {
+      output.push(contracted);
+      previousMora = pair;
+      index += 1;
+      continue;
+    }
+
+    const phonetic = KANA_TO_CHINESE.get(character);
+    output.push(phonetic ?? character);
+    previousMora = phonetic ? character : '';
+  }
+
+  return output.join('');
+}
 
 export function katakanaToHiragana(value: string): string {
   return Array.from(value)
@@ -45,46 +153,18 @@ export function katakanaToHiragana(value: string): string {
 
 export function readingToChinese(reading: string): string {
   const normalized = katakanaToHiragana(reading);
-  const output: string[] = [];
-
-  for (let index = 0; index < normalized.length; index += 1) {
-    const character = normalized[index];
-
-    if (/\s/u.test(character)) {
-      continue;
-    }
-
-    if (character === 'っ') {
-      output.push('·');
-      continue;
-    }
-
-    if (character === 'ー') {
-      output.push('—');
-      continue;
-    }
-
-    const pair = normalized.slice(index, index + 2);
-    if (KANA_TO_CHINESE[pair]) {
-      output.push(KANA_TO_CHINESE[pair]);
-      index += 1;
-      continue;
-    }
-
-    if (KANA_TO_CHINESE[character]) {
-      output.push(KANA_TO_CHINESE[character]);
-      continue;
-    }
-
-    output.push(character);
-  }
+  const output = normalized.split(/(\s+)/u).map((part) => {
+    if (/^\s+$/u.test(part)) return ' ';
+    if (part === 'は') return '哇';
+    if (part === 'へ') return '诶';
+    if (part === 'を') return '哦';
+    return convertWord(part);
+  });
 
   return output
-    .join(' ')
+    .join('')
     .replace(/\s+([、。！？,.!?：:；;…—―」』）)\]】])/gu, '$1')
     .replace(/([「『（(【])\s+/gu, '$1')
-    .replace(/([、。！？,.!?：:；;…「」『』（）【】])\s+/gu, '$1')
-    .replace(/\s+·\s+/gu, '·')
-    .replace(/\s+—/gu, '—')
+    .replace(/\s+/gu, ' ')
     .trim();
 }

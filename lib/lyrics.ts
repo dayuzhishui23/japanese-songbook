@@ -165,8 +165,9 @@ export async function convertLyrics(rawLyrics: string): Promise<LyricLine[]> {
     }
 
     const japanese = sourceLine.trim();
-    const [reading, romaji] = await Promise.all([
+    const [reading, phoneticReading, romaji] = await Promise.all([
       converter.convert(japanese, { to: 'hiragana', mode: 'normal' }),
+      converter.convert(japanese, { to: 'hiragana', mode: 'spaced' }),
       converter.convert(japanese, {
         to: 'romaji',
         mode: 'spaced',
@@ -178,7 +179,7 @@ export async function convertLyrics(rawLyrics: string): Promise<LyricLine[]> {
       japanese,
       reading,
       romaji: romaji.replace(/\s+([、。！？,.!?])/gu, '$1').trim(),
-      chinesePhonetic: readingToChinese(reading),
+      chinesePhonetic: readingToChinese(phoneticReading),
       isBreak: false,
     });
   }
