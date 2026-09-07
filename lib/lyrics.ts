@@ -39,6 +39,11 @@ type KuromojiTokenizer = {
   tokenize(text: string): Array<Record<string, unknown>>;
 };
 
+function publicAsset(path: string): string {
+  const base = import.meta.env.BASE_URL || '/';
+  return `${base}${path}`;
+}
+
 function loadKuromojiScript(): Promise<void> {
   const browserWindow = window as KuroshiroBrowserWindow;
   if (browserWindow.kuromoji) return Promise.resolve();
@@ -62,7 +67,7 @@ function loadKuromojiScript(): Promise<void> {
     script.addEventListener('error', handleError, { once: true });
 
     if (!existing) {
-      script.src = '/vendor/kuromoji.js';
+      script.src = publicAsset('vendor/kuromoji.js');
       script.async = true;
       script.dataset.lyricsLibrary = 'kuromoji';
       document.getElementsByTagName('head')[0]?.appendChild(script);
@@ -76,7 +81,9 @@ async function createKuromojiAnalyzer(): Promise<{
 }> {
   await loadKuromojiScript();
   const browserWindow = window as KuroshiroBrowserWindow;
-  const builder = browserWindow.kuromoji?.builder({ dicPath: '/kuromoji/' });
+  const builder = browserWindow.kuromoji?.builder({
+    dicPath: publicAsset('kuromoji/'),
+  });
   if (!builder) throw new Error('日语词典初始化失败。');
   let tokenizer: KuromojiTokenizer | null = null;
 

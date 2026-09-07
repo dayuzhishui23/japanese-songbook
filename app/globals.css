@@ -37,6 +37,11 @@
 
 :root,
 .dark {
+  --font-geist-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  --font-geist-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --background: #061027;
   --foreground: #f8fafc;
   --card: #0b1835;
