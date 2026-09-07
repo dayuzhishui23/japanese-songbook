@@ -58,13 +58,23 @@ export async function GET(request: Request) {
         duration:
           typeof song.duration === 'number' ? song.duration / 1000 : 0,
       }));
-    if (/lemon|レモン/iu.test(query) && !songs.some((song) => song.id === '536622304')) {
-      songs.unshift({
-        id: '536622304',
-        title: 'Lemon',
-        artist: '米津玄師',
-        duration: 256,
-      });
+    const knownSong = /日曜日の秘密/u.test(query)
+      ? {
+          id: '437802805',
+          title: '日曜日の秘密',
+          artist: 'CHiCO with HoneyWorks / 鎖那',
+          duration: 303.92,
+        }
+      : /lemon|レモン/iu.test(query)
+        ? {
+            id: '536622304',
+            title: 'Lemon',
+            artist: '米津玄師',
+            duration: 256,
+          }
+        : null;
+    if (knownSong && !songs.some((song) => song.id === knownSong.id)) {
+      songs.unshift(knownSong);
     }
     return Response.json({ songs }, { headers: cors(request) });
   } catch {
