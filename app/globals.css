@@ -42,24 +42,24 @@
     sans-serif;
   --font-geist-mono:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --background: #061027;
-  --foreground: #f8fafc;
-  --card: #0b1835;
-  --card-foreground: #f8fafc;
-  --popover: #0b1835;
-  --popover-foreground: #f8fafc;
-  --primary: #facc15;
-  --primary-foreground: #172033;
-  --secondary: #122344;
-  --secondary-foreground: #e8eef9;
-  --muted: #122344;
-  --muted-foreground: #9cabc3;
-  --accent: #1a3159;
-  --accent-foreground: #ffffff;
-  --destructive: #fb7185;
-  --border: rgb(255 255 255 / 12%);
-  --input: rgb(255 255 255 / 14%);
-  --ring: #facc15;
+  --background: #f7f4e9;
+  --foreground: #283329;
+  --card: #dce9d7;
+  --card-foreground: #283329;
+  --popover: #f7f4e9;
+  --popover-foreground: #283329;
+  --primary: #526b4f;
+  --primary-foreground: #fffdf7;
+  --secondary: #e8efe3;
+  --secondary-foreground: #344536;
+  --muted: #e9ede2;
+  --muted-foreground: #657066;
+  --accent: #c9dcc3;
+  --accent-foreground: #283329;
+  --destructive: #b45050;
+  --border: rgb(52 69 54 / 17%);
+  --input: rgb(52 69 54 / 20%);
+  --ring: #526b4f;
   --radius: 0.75rem;
 }
 
@@ -79,7 +79,7 @@
   }
 
   ::selection {
-    background: rgb(250 204 21 / 28%);
-    color: white;
+    background: rgb(82 107 79 / 28%);
+    color: #283329;
   }
 }

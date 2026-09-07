@@ -407,8 +407,8 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-8 sm:py-8">
-        <header className="mb-5 flex items-center justify-between gap-4 border-b border-white/10 pb-5">
-          <h1 className="font-heading text-2xl font-semibold tracking-[-0.035em] text-white sm:text-4xl">
+        <header className="mb-5 flex items-center justify-between gap-4 border-b border-foreground/10 pb-5">
+          <h1 className="font-heading text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-4xl">
             日语歌本
           </h1>
           <div className="flex flex-wrap justify-end gap-2">
@@ -483,15 +483,15 @@ function SongShelf({
               className={`min-w-40 rounded-xl border px-4 py-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                 active
                   ? 'border-primary/55 bg-primary/12'
-                  : 'border-white/10 bg-card hover:border-white/24'
+                  : 'border-foreground/10 bg-card hover:border-foreground/24'
               }`}
               onClick={() => onSelect(song)}
               type="button"
             >
-              <strong className="block truncate text-base text-white">
+              <strong className="block truncate text-base text-foreground">
                 {song.title}
               </strong>
-              <span className="mt-1 block truncate text-sm text-white/48">
+              <span className="mt-1 block truncate text-sm text-foreground/48">
                 {song.artist}
               </span>
             </button>
@@ -512,12 +512,12 @@ function SongHeader({
   song: SongRecord;
 }) {
   return (
-    <section className="mb-5 flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#08152f] p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+    <section className="mb-5 flex flex-col gap-4 rounded-2xl border border-foreground/10 bg-card p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
       <div className="min-w-0">
-        <h2 className="truncate text-3xl font-semibold tracking-[-0.03em] text-white sm:text-4xl">
+        <h2 className="truncate text-3xl font-semibold tracking-[-0.03em] text-foreground sm:text-4xl">
           {song.title}
         </h2>
-        <p className="mt-2 text-lg text-white/62">{song.artist}</p>
+        <p className="mt-2 text-lg text-foreground/62">{song.artist}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {song.officialUrl ? (
@@ -558,7 +558,7 @@ function SongHeader({
 function ExternalLinkButton({ href, label }: { href: string; label: string }) {
   return (
     <a
-      className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/14 px-4 text-sm font-medium text-white/72 transition hover:border-primary/55 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className="inline-flex min-h-11 items-center gap-2 rounded-full border border-foreground/14 px-4 text-sm font-medium text-foreground/72 transition hover:border-primary/55 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       href={href}
       rel="noreferrer"
       target="_blank"
@@ -603,10 +603,10 @@ function SongFormDialog({
       >
         <Pencil aria-hidden="true" /> 编辑资料
       </DialogTrigger>
-      <DialogContent className="max-w-lg border-white/12 bg-card p-6 sm:max-w-lg">
+      <DialogContent className="max-w-lg border-foreground/12 bg-card p-6 sm:max-w-lg">
         <form onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle className="text-xl text-white">
+            <DialogTitle className="text-xl text-foreground">
               编辑歌曲资料
             </DialogTitle>
             <DialogDescription>歌名和歌手为必填。</DialogDescription>
@@ -614,7 +614,7 @@ function SongFormDialog({
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <FormField label="歌名" required>
               <Input
-                className="h-11 bg-[#07122b] text-base"
+                className="h-11 bg-background text-base"
                 onChange={(e) => setDraft({ ...draft, title: e.target.value })}
                 required
                 value={draft.title}
@@ -622,7 +622,7 @@ function SongFormDialog({
             </FormField>
             <FormField label="歌手" required>
               <Input
-                className="h-11 bg-[#07122b] text-base"
+                className="h-11 bg-background text-base"
                 onChange={(e) => setDraft({ ...draft, artist: e.target.value })}
                 required
                 value={draft.artist}
@@ -630,7 +630,7 @@ function SongFormDialog({
             </FormField>
             <FormField label="歌曲资料链接">
               <Input
-                className="h-11 bg-[#07122b] text-base"
+                className="h-11 bg-background text-base"
                 onChange={(e) =>
                   setDraft({ ...draft, officialUrl: e.target.value })
                 }
@@ -641,7 +641,7 @@ function SongFormDialog({
             </FormField>
             <FormField label="官方 MV 链接">
               <Input
-                className="h-11 bg-[#07122b] text-base"
+                className="h-11 bg-background text-base"
                 onChange={(e) => setDraft({ ...draft, mvUrl: e.target.value })}
                 placeholder="https://…"
                 type="url"
@@ -649,7 +649,7 @@ function SongFormDialog({
               />
             </FormField>
           </div>
-          <DialogFooter className="mt-6 border-white/10 bg-white/[0.025]">
+          <DialogFooter className="mt-6 border-foreground/10 bg-foreground/[0.025]">
             <DialogClose render={<Button type="button" variant="outline" />}>
               取消
             </DialogClose>
@@ -671,7 +671,7 @@ function FormField({
   required?: boolean;
 }) {
   return (
-    <label className="grid gap-2 text-sm font-medium text-white/72">
+    <label className="grid gap-2 text-sm font-medium text-foreground/72">
       <span>
         {label}
         {required ? <span className="ml-1 text-primary">*</span> : null}
@@ -740,9 +740,9 @@ function LibraryBackupDialog({
       >
         备份
       </DialogTrigger>
-      <DialogContent className="max-w-lg border-white/12 bg-card p-6 sm:max-w-lg">
+      <DialogContent className="max-w-lg border-foreground/12 bg-card p-6 sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-xl text-white">本机歌本备份</DialogTitle>
+          <DialogTitle className="text-xl text-foreground">本机歌本备份</DialogTitle>
           <DialogDescription>
             保存歌曲、校音和时间点，不包含音频文件。
           </DialogDescription>
@@ -756,7 +756,7 @@ function LibraryBackupDialog({
           >
             <Download aria-hidden="true" /> 导出备份
           </Button>
-          <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-full bg-white/8 px-5 text-sm font-medium text-white transition hover:bg-white/12 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary">
+          <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-full bg-foreground/8 px-5 text-sm font-medium text-foreground transition hover:bg-foreground/12 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary">
             <FileUp aria-hidden="true" className="size-4" /> 选择备份文件
             <input
               accept="application/json,.json"
@@ -776,8 +776,8 @@ function LibraryBackupDialog({
         ) : null}
         {candidate ? (
           <div className="mt-5 rounded-2xl border border-primary/25 bg-primary/[0.06] p-4">
-            <p className="truncate text-sm text-white/72">{fileName}</p>
-            <p className="mt-1 text-sm text-white/48">
+            <p className="truncate text-sm text-foreground/72">{fileName}</p>
+            <p className="mt-1 text-sm text-foreground/48">
               {candidate.songs.length} 首歌曲 ·{' '}
               {Object.keys(candidate.phoneticCorrections).length} 条校音
             </p>
@@ -864,14 +864,14 @@ function OnlineSongSearchDialog({
       >
         <Search aria-hidden="true" /> 搜歌
       </DialogTrigger>
-      <DialogContent className="max-w-xl border-white/12 bg-card p-6 sm:max-w-xl">
+      <DialogContent className="max-w-xl border-foreground/12 bg-card p-6 sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="text-xl text-white">搜索歌曲</DialogTitle>
+          <DialogTitle className="text-xl text-foreground">搜索歌曲</DialogTitle>
           <DialogDescription>输入歌名或歌手，选择后自动生成学唱歌词。</DialogDescription>
         </DialogHeader>
         <form className="mt-5 flex gap-2" onSubmit={searchSongs}>
           <Input
-            className="h-12 min-w-0 bg-[#07122b] text-base"
+            className="h-12 min-w-0 bg-background text-base"
             maxLength={100}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="例如：Lemon 米津玄師"
@@ -896,17 +896,17 @@ function OnlineSongSearchDialog({
             {results.map((song) => (
               <button
                 key={song.id}
-                className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-white/10 bg-[#07122b] px-4 py-3 text-left transition hover:border-primary/45 focus-visible:outline-2 focus-visible:outline-primary"
+                className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-foreground/10 bg-background px-4 py-3 text-left transition hover:border-primary/45 focus-visible:outline-2 focus-visible:outline-primary"
                 disabled={Boolean(loadingSongId)}
                 onClick={() => void chooseSong(song)}
                 type="button"
               >
                 <Music2 aria-hidden="true" className="size-5 shrink-0 text-primary" />
                 <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-base text-white">
+                  <strong className="block truncate text-base text-foreground">
                     {song.title}
                   </strong>
-                  <span className="mt-0.5 block truncate text-sm text-white/48">
+                  <span className="mt-0.5 block truncate text-sm text-foreground/48">
                     {song.artist}
                   </span>
                 </span>
@@ -928,10 +928,10 @@ function EmptyLibrary({
   onChoose: (song: OnlineSongResult) => Promise<void>;
 }) {
   return (
-    <section className="grid min-h-80 place-items-center rounded-[1.75rem] border border-dashed border-white/16 bg-card p-8 text-center">
+    <section className="grid min-h-80 place-items-center rounded-[1.75rem] border border-dashed border-foreground/16 bg-card p-8 text-center">
       <div>
         <Music2 aria-hidden="true" className="mx-auto size-10 text-primary" />
-        <h2 className="mt-4 text-2xl font-semibold text-white">歌本还是空的</h2>
+        <h2 className="mt-4 text-2xl font-semibold text-foreground">歌本还是空的</h2>
         <div className="mt-5">
           <OnlineSongSearchDialog onChoose={onChoose} />
         </div>
@@ -971,10 +971,10 @@ function PhoneticDictionaryDialog({
       >
         校音词典{entries.length ? ` ${entries.length}` : ''}
       </DialogTrigger>
-      <DialogContent className="max-w-lg border-white/12 bg-card p-6 sm:max-w-lg">
+      <DialogContent className="max-w-lg border-foreground/12 bg-card p-6 sm:max-w-lg">
         <form onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle className="text-xl text-white">
+            <DialogTitle className="text-xl text-foreground">
               本机校音词典
             </DialogTitle>
             <DialogDescription>
@@ -984,7 +984,7 @@ function PhoneticDictionaryDialog({
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <FormField label="平假名读音">
               <Input
-                className="h-11 bg-[#07122b] text-base"
+                className="h-11 bg-background text-base"
                 lang="ja"
                 onChange={(event) => setReading(event.target.value)}
                 placeholder="例如：きょう"
@@ -993,7 +993,7 @@ function PhoneticDictionaryDialog({
             </FormField>
             <FormField label="中文跟唱音">
               <Input
-                className="h-11 bg-[#07122b] text-base"
+                className="h-11 bg-background text-base"
                 onChange={(event) => setChinesePhonetic(event.target.value)}
                 placeholder="例如：Q哟—"
                 value={chinesePhonetic}
@@ -1006,13 +1006,13 @@ function PhoneticDictionaryDialog({
             </Button>
           </div>
           {entries.length ? (
-            <div className="mt-5 max-h-56 space-y-2 overflow-y-auto border-t border-white/10 pt-4">
+            <div className="mt-5 max-h-56 space-y-2 overflow-y-auto border-t border-foreground/10 pt-4">
               {entries.map(([savedReading, savedPhonetic]) => (
                 <div
                   key={savedReading}
-                  className="flex items-center gap-3 rounded-xl bg-[#07122b] px-3 py-2"
+                  className="flex items-center gap-3 rounded-xl bg-background px-3 py-2"
                 >
-                  <span className="min-w-0 flex-1 truncate text-sm text-white/72">
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground/72">
                     <span lang="ja">{savedReading}</span> → {savedPhonetic}
                   </span>
                   <Button
@@ -1052,12 +1052,12 @@ function LyricsEditor({
   return (
     <section aria-labelledby="lyrics-input-title">
       <form
-        className="rounded-2xl border border-white/10 bg-card p-5 shadow-[0_24px_80px_rgb(2_6_23/28%)] sm:p-7"
+        className="rounded-2xl border border-foreground/10 bg-card p-5 shadow-[0_24px_80px_rgb(52_69_54/12%)] sm:p-7"
         onSubmit={onSubmit}
       >
         <h2
           id="lyrics-input-title"
-          className="mb-4 text-xl font-semibold text-white"
+          className="mb-4 text-xl font-semibold text-foreground"
         >
           日语歌词
         </h2>
@@ -1070,7 +1070,7 @@ function LyricsEditor({
             error ? 'lyrics-error lyrics-privacy' : 'lyrics-privacy'
           }
           aria-invalid={Boolean(error)}
-          className="min-h-64 resize-y rounded-2xl border-white/12 bg-[#07122b] p-5 text-base leading-8 text-white placeholder:text-white/34 focus-visible:border-primary focus-visible:ring-primary/20"
+          className="min-h-64 resize-y rounded-2xl border-foreground/12 bg-background p-5 text-base leading-8 text-foreground placeholder:text-foreground/34 focus-visible:border-primary focus-visible:ring-primary/20"
           maxLength={MAX_LYRICS_LENGTH}
           onChange={(event) => onLyricsChange(event.target.value)}
           placeholder="粘贴歌词，每行一句…"
@@ -1088,13 +1088,13 @@ function LyricsEditor({
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p
             id="lyrics-privacy"
-            className="flex items-center gap-2 text-sm text-white/48"
+            className="flex items-center gap-2 text-sm text-foreground/48"
           >
             <LockKeyhole aria-hidden="true" className="size-4 text-primary" />{' '}
             仅存本机
           </p>
           <Button
-            className="h-12 rounded-full px-6 text-base font-semibold shadow-[0_10px_30px_rgb(250_204_21/18%)]"
+            className="h-12 rounded-full px-6 text-base font-semibold shadow-[0_10px_30px_rgb(82_107_79/18%)]"
             disabled={isGenerating}
             type="submit"
           >
@@ -1342,7 +1342,7 @@ function LyricsReader({
     >
       {outdatedCount ? (
         <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-primary/25 bg-primary/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-white/72">
+          <p className="text-sm text-foreground/72">
             有 {outdatedCount} 句可更新为新版跟唱音，人工修改会保留。
           </p>
           <Button
@@ -1453,12 +1453,12 @@ function LyricsReader({
       </div>
       {showAudioSync && !isEditingLines ? (
         <div
-          className={`rounded-2xl border border-primary/20 bg-[#08152f]/95 p-4 shadow-[0_20px_70px_rgb(0_0_0/45%)] backdrop-blur sm:mb-4 sm:bg-primary/[0.06] sm:p-5 sm:shadow-none ${
+          className={`rounded-2xl border border-primary/20 bg-card/95 p-4 shadow-[0_20px_70px_rgb(52_69_54/22%)] backdrop-blur sm:mb-4 sm:bg-primary/[0.06] sm:p-5 sm:shadow-none ${
             audioUrl ? 'fixed inset-x-3 bottom-3 z-40 sm:static' : 'mb-4'
           }`}
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-2 text-sm font-medium text-white/72">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground/72">
               <AudioLines aria-hidden="true" className="size-5 text-primary" />
               在线音源
             </div>
@@ -1499,7 +1499,7 @@ function LyricsReader({
                   />
                 </audio>
               ) : (
-                <p className="text-sm text-white/48">这首歌没有关联在线音源</p>
+                <p className="text-sm text-foreground/48">这首歌没有关联在线音源</p>
               )}
             </div>
             {lines.some((line) => typeof line.startTime === 'number') ? (
@@ -1519,7 +1519,7 @@ function LyricsReader({
             </p>
           ) : null}
           {audioUrl && activeLine && !activeLine.isBreak ? (
-            <div className="mt-3 grid gap-3 border-t border-white/10 pt-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+            <div className="mt-3 grid gap-3 border-t border-foreground/10 pt-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
               <div className="flex items-center gap-1">
                 <Button
                   aria-label="上一句"
@@ -1549,7 +1549,7 @@ function LyricsReader({
                 </Button>
               </div>
               <p
-                className="min-w-0 truncate text-base font-medium text-white"
+                className="min-w-0 truncate text-base font-medium text-foreground"
                 lang="ja"
               >
                 {activeLine.japanese}
@@ -1565,19 +1565,19 @@ function LyricsReader({
           ) : null}
         </div>
       ) : null}
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-card shadow-[0_24px_80px_rgb(2_6_23/28%)]">
+      <div className="overflow-hidden rounded-2xl border border-foreground/10 bg-card shadow-[0_24px_80px_rgb(52_69_54/12%)]">
         {visibleLines.map((line, index) =>
           line.isBreak ? (
             <div
               key={`break-${index}`}
               aria-hidden="true"
-              className="h-9 border-y border-white/[0.035] bg-[#07122b]/55"
+              className="h-9 border-y border-foreground/[0.035] bg-background/55"
             />
           ) : (
             <article
               key={index}
               id={`lyric-line-${index}`}
-              className={`border-b border-white/[0.07] px-5 py-7 last:border-b-0 sm:px-8 ${
+              className={`border-b border-foreground/[0.07] px-5 py-7 last:border-b-0 sm:px-8 ${
                 showAudioSync && activeLineIndex === index
                   ? 'bg-primary/[0.07] ring-1 ring-inset ring-primary/30'
                   : ''
@@ -1588,7 +1588,7 @@ function LyricsReader({
                   <label>
                     <span className="sr-only">第 {index + 1} 行日语</span>
                     <Textarea
-                      className="min-h-12 resize-y border-white/12 bg-[#07122b] px-4 py-3 text-[1.2rem] leading-relaxed font-semibold text-white"
+                      className="min-h-12 resize-y border-foreground/12 bg-background px-4 py-3 text-[1.2rem] leading-relaxed font-semibold text-foreground"
                       lang="ja"
                       onChange={(event) =>
                         updateLine(index, 'japanese', event.target.value)
@@ -1599,7 +1599,7 @@ function LyricsReader({
                   <label>
                     <span className="sr-only">第 {index + 1} 行平假名读音</span>
                     <Textarea
-                      className="min-h-11 resize-y border-white/12 bg-[#07122b] px-4 py-2 text-base leading-relaxed text-white/72"
+                      className="min-h-11 resize-y border-foreground/12 bg-background px-4 py-2 text-base leading-relaxed text-foreground/72"
                       lang="ja"
                       onChange={(event) =>
                         updateLine(index, 'reading', event.target.value)
@@ -1611,7 +1611,7 @@ function LyricsReader({
                   <label>
                     <span className="sr-only">第 {index + 1} 行罗马音</span>
                     <Textarea
-                      className="min-h-11 resize-y border-white/12 bg-[#07122b] px-4 py-2 font-mono text-base leading-relaxed text-sky-200"
+                      className="min-h-11 resize-y border-foreground/12 bg-background px-4 py-2 font-mono text-base leading-relaxed text-muted-foreground"
                       onChange={(event) =>
                         updateLine(index, 'romaji', event.target.value)
                       }
@@ -1668,19 +1668,19 @@ function LyricsReader({
                 <>
                   <p
                     lang="ja"
-                    className="text-[1.35rem] leading-relaxed font-semibold tracking-[0.015em] text-white sm:text-[1.6rem]"
+                    className="text-[1.35rem] leading-relaxed font-semibold tracking-[0.015em] text-foreground sm:text-[1.6rem]"
                   >
                     {line.japanese}
                   </p>
-                  <p className="mt-2 font-mono text-base leading-relaxed text-sky-200/78 sm:text-lg">
+                  <p className="mt-2 font-mono text-base leading-relaxed text-muted-foreground sm:text-lg">
                     {line.romaji}
                   </p>
                   <p className="mt-2 text-lg leading-relaxed font-medium tracking-[0.06em] text-primary sm:text-xl">
                     {line.chinesePhonetic}
                   </p>
                   {showAudioSync ? (
-                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/[0.07] pt-4">
-                      <span className="min-w-16 font-mono text-sm text-white/48">
+                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-foreground/[0.07] pt-4">
+                      <span className="min-w-16 font-mono text-sm text-foreground/48">
                         {typeof line.startTime === 'number'
                           ? formatTimestamp(line.startTime)
                           : '--:--.-'}
@@ -1715,7 +1715,7 @@ function LyricsReader({
           ),
         )}
       </div>
-      <p className="mt-3 text-sm text-white/42">
+      <p className="mt-3 text-sm text-foreground/42">
         · 短停顿　— 长音　中文为跟唱近似音　在线来源可能失效
       </p>
     </section>
