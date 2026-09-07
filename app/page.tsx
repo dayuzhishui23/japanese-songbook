@@ -1870,7 +1870,8 @@ function AnimalPlayground() {
           className="animal-chase-art"
           draggable={false}
           height="180"
-          src="./animal-chase.png"
+          src="/animal-chase.png"
+          unoptimized
           width="337"
         />
       </div>

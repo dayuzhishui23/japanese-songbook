@@ -109,15 +109,15 @@
 
 @keyframes chase-across {
   0% {
-    left: -14rem;
+    left: 0;
     transform: scaleX(1);
   }
   45% {
-    left: calc(100% - 14rem);
+    left: calc(100% - var(--animal-width));
     transform: scaleX(1);
   }
   50% {
-    left: calc(100% - 14rem);
+    left: calc(100% - var(--animal-width));
     transform: scaleX(-1);
   }
   95% {
@@ -125,8 +125,8 @@
     transform: scaleX(-1);
   }
   100% {
-    left: -14rem;
-    transform: scaleX(-1);
+    left: 0;
+    transform: scaleX(1);
   }
 }
 
@@ -149,6 +149,7 @@
 }
 
 .animal-playground {
+  --animal-width: 14rem;
   position: relative;
   height: 5.5rem;
   mask-image: linear-gradient(
@@ -179,7 +180,7 @@
   position: absolute;
   bottom: 0.35rem;
   z-index: 1;
-  width: 14rem;
+  width: var(--animal-width);
   animation: chase-across 16s linear infinite;
   will-change: left, transform;
 }
@@ -194,11 +195,8 @@
 
 @media (min-width: 640px) {
   .animal-playground {
+    --animal-width: 17rem;
     height: 7rem;
-  }
-
-  .animal-chase {
-    width: 17rem;
   }
 }
 
