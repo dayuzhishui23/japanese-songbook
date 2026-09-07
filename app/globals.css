@@ -1,0 +1,80 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-geist-sans);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root,
+.dark {
+  --background: #061027;
+  --foreground: #f8fafc;
+  --card: #0b1835;
+  --card-foreground: #f8fafc;
+  --popover: #0b1835;
+  --popover-foreground: #f8fafc;
+  --primary: #facc15;
+  --primary-foreground: #172033;
+  --secondary: #122344;
+  --secondary-foreground: #e8eef9;
+  --muted: #122344;
+  --muted-foreground: #9cabc3;
+  --accent: #1a3159;
+  --accent-foreground: #ffffff;
+  --destructive: #fb7185;
+  --border: rgb(255 255 255 / 12%);
+  --input: rgb(255 255 255 / 14%);
+  --ring: #facc15;
+  --radius: 0.75rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply font-sans;
+    background: var(--background);
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    min-width: 320px;
+  }
+
+  ::selection {
+    background: rgb(250 204 21 / 28%);
+    color: white;
+  }
+}

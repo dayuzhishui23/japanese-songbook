@@ -1,0 +1,158 @@
+import { readingToChinese } from './phonetic';
+
+export const MAX_LYRICS_LENGTH = 20_000;
+
+export type LyricLine = {
+  japanese: string;
+  reading: string;
+  romaji: string;
+  chinesePhonetic: string;
+  isBreak: boolean;
+};
+
+type KuroshiroInstance = {
+  init(analyzer: unknown): Promise<void>;
+  convert(
+    text: string,
+    options: { to: 'hiragana' | 'romaji'; mode?: 'normal' | 'spaced'; romajiSystem?: 'hepburn' },
+  ): Promise<string>;
+};
+
+let kuroshiroPromise: Promise<KuroshiroInstance> | null = null;
+
+type KuroshiroBrowserWindow = Window & {
+  kuromoji?: {
+    builder(options: { dicPath: string }): {
+      build(callback: (error: Error | null, tokenizer: KuromojiTokenizer) => void): void;
+    };
+  };
+};
+
+type KuromojiTokenizer = {
+  tokenize(text: string): Array<Record<string, unknown>>;
+};
+
+function loadKuromojiScript(): Promise<void> {
+  const browserWindow = window as KuroshiroBrowserWindow;
+  if (browserWindow.kuromoji) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[data-lyrics-library="kuromoji"]');
+    const script = existing ?? document.createElement('script');
+
+    const handleLoad = () => {
+      if (browserWindow.kuromoji) resolve();
+      else reject(new Error('无法初始化 Kuromoji。'));
+    };
+    const handleError = () => {
+      script.remove();
+      reject(new Error('无法载入 Kuromoji。'));
+    };
+
+    script.addEventListener('load', handleLoad, { once: true });
+    script.addEventListener('error', handleError, { once: true });
+
+    if (!existing) {
+      script.src = '/vendor/kuromoji.js';
+      script.async = true;
+      script.dataset.lyricsLibrary = 'kuromoji';
+      document.getElementsByTagName('head')[0]?.appendChild(script);
+    }
+  });
+}
+
+async function createKuromojiAnalyzer(): Promise<{ init(): Promise<void>; parse(text: string): Promise<Array<Record<string, unknown>>> }> {
+  await loadKuromojiScript();
+  const browserWindow = window as KuroshiroBrowserWindow;
+  const builder = browserWindow.kuromoji?.builder({ dicPath: '/kuromoji/' });
+  if (!builder) throw new Error('日语词典初始化失败。');
+  let tokenizer: KuromojiTokenizer | null = null;
+
+  return {
+    init() {
+      return new Promise((resolve, reject) => {
+        builder.build((error, builtTokenizer) => {
+          if (error) reject(error);
+          else {
+            tokenizer = builtTokenizer;
+            resolve();
+          }
+        });
+      });
+    },
+    async parse(text: string) {
+      if (!tokenizer) throw new Error('日语词典尚未准备好。');
+      if (!text.trim()) return [];
+      return tokenizer.tokenize(text);
+    },
+  };
+}
+
+async function getKuroshiro(): Promise<KuroshiroInstance> {
+  if (!kuroshiroPromise) {
+    kuroshiroPromise = Promise.all([import('kuroshiro'), createKuromojiAnalyzer()])
+      .then(async ([kuroshiroModule, analyzer]) => {
+        const moduleDefault = kuroshiroModule.default as unknown;
+        const Kuroshiro = (typeof moduleDefault === 'function'
+          ? moduleDefault
+          : (moduleDefault as { default?: unknown })?.default) as new () => KuroshiroInstance;
+        if (typeof Kuroshiro !== 'function') throw new Error('日语读音组件初始化失败。');
+        const converter = new Kuroshiro();
+        await converter.init(analyzer);
+        return converter;
+      })
+      .catch((error) => {
+        kuroshiroPromise = null;
+        throw error;
+      });
+  }
+
+  return kuroshiroPromise;
+}
+
+export function validateLyricsInput(rawLyrics: string): string {
+  if (!rawLyrics.trim()) {
+    throw new Error('请先粘贴日语歌词。');
+  }
+
+  if (rawLyrics.length > MAX_LYRICS_LENGTH) {
+    throw new Error('歌词内容过长，请控制在 20,000 个字符以内。');
+  }
+
+  return rawLyrics.replace(/\r\n?/gu, '\n');
+}
+
+export async function convertLyrics(rawLyrics: string): Promise<LyricLine[]> {
+  const normalized = validateLyricsInput(rawLyrics);
+  const converter = await getKuroshiro();
+  const result: LyricLine[] = [];
+
+  for (const sourceLine of normalized.split('\n')) {
+    if (!sourceLine.trim()) {
+      result.push({
+        japanese: '',
+        reading: '',
+        romaji: '',
+        chinesePhonetic: '',
+        isBreak: true,
+      });
+      continue;
+    }
+
+    const japanese = sourceLine.trim();
+    const [reading, romaji] = await Promise.all([
+      converter.convert(japanese, { to: 'hiragana', mode: 'normal' }),
+      converter.convert(japanese, { to: 'romaji', mode: 'spaced', romajiSystem: 'hepburn' }),
+    ]);
+
+    result.push({
+      japanese,
+      reading,
+      romaji: romaji.replace(/\s+([、。！？,.!?])/gu, '$1').trim(),
+      chinesePhonetic: readingToChinese(reading),
+      isBreak: false,
+    });
+  }
+
+  return result;
+}
