@@ -13,14 +13,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Lemon 日语学唱',
-  description: '在浏览器本地生成日语歌词、罗马音和中文跟唱音译。',
+  title: '日语学唱歌本',
+  description:
+    '在浏览器本地管理多首歌曲，并生成日语歌词、罗马音和中文跟唱音译。',
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-CN">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>{children}</body>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        {children}
+      </body>
     </html>
   );
 }
