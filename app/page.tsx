@@ -3,13 +3,10 @@
 import {
   ArrowLeft,
   ExternalLink,
-  Library,
   LockKeyhole,
   Music2,
   Pencil,
   Plus,
-  RotateCcw,
-  Sparkles,
   Trash2,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -281,19 +278,11 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8 sm:py-10">
-        <header className="mb-6 flex flex-col gap-5 border-b border-white/10 pb-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
-              <Music2 aria-hidden="true" className="size-4" /> 日语跟唱练习
-            </div>
-            <h1 className="font-heading text-3xl font-semibold tracking-[-0.035em] text-white sm:text-5xl">
-              我的日语歌本
-            </h1>
-            <p className="mt-2 text-base text-white/55">
-              每首歌的歌词和读音都只保存在当前浏览器。
-            </p>
-          </div>
+      <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-8 sm:py-8">
+        <header className="mb-5 flex items-center justify-between gap-4 border-b border-white/10 pb-5">
+          <h1 className="font-heading text-2xl font-semibold tracking-[-0.035em] text-white sm:text-4xl">
+            日语歌本
+          </h1>
           <SongFormDialog mode="add" onSave={addSong} />
         </header>
 
@@ -330,11 +319,6 @@ export default function Home() {
         ) : (
           <EmptyLibrary onAdd={addSong} />
         )}
-
-        <footer className="mt-8 flex flex-col gap-2 border-t border-white/10 pt-6 text-sm leading-relaxed text-white/42 sm:flex-row sm:items-center sm:justify-between">
-          <p>中文音译仅供跟唱参考，不是翻译；自动读音可能需要人工校正。</p>
-          <p>歌词不上传，也不会随网站发布。</p>
-        </footer>
       </div>
     </main>
   );
@@ -351,18 +335,15 @@ function SongShelf({
 }) {
   if (!songs.length) return null;
   return (
-    <section aria-label="歌曲列表" className="mb-6">
-      <div className="mb-2 flex items-center gap-2 text-sm font-medium text-white/48">
-        <Library aria-hidden="true" className="size-4" /> {songs.length} 首歌曲
-      </div>
-      <div className="flex gap-3 overflow-x-auto pb-2">
-        {songs.map((song, index) => {
+    <section aria-label="歌曲列表" className="mb-5">
+      <div className="flex gap-2 overflow-x-auto pb-2">
+        {songs.map((song) => {
           const active = song.id === activeSongId;
           return (
             <button
               key={song.id}
               aria-current={active ? 'true' : undefined}
-              className={`min-w-44 rounded-2xl border p-4 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+              className={`min-w-40 rounded-xl border px-4 py-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                 active
                   ? 'border-primary/55 bg-primary/12'
                   : 'border-white/10 bg-card hover:border-white/24'
@@ -370,12 +351,7 @@ function SongShelf({
               onClick={() => onSelect(song)}
               type="button"
             >
-              <span
-                className={`text-xs font-semibold tracking-[0.16em] ${active ? 'text-primary' : 'text-white/35'}`}
-              >
-                {String(index + 1).padStart(2, '0')}
-              </span>
-              <strong className="mt-2 block truncate text-base text-white">
+              <strong className="block truncate text-base text-white">
                 {song.title}
               </strong>
               <span className="mt-1 block truncate text-sm text-white/48">
@@ -399,12 +375,9 @@ function SongHeader({
   song: SongRecord;
 }) {
   return (
-    <section className="mb-6 flex flex-col gap-5 rounded-[1.75rem] border border-white/10 bg-[#08152f] p-5 sm:flex-row sm:items-end sm:justify-between sm:p-7">
+    <section className="mb-5 flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#08152f] p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
       <div className="min-w-0">
-        <p className="mb-1 text-sm font-medium tracking-[0.16em] text-white/42 uppercase">
-          Now practicing
-        </p>
-        <h2 className="truncate text-3xl font-semibold tracking-[-0.03em] text-white sm:text-5xl">
+        <h2 className="truncate text-3xl font-semibold tracking-[-0.03em] text-white sm:text-4xl">
           {song.title}
         </h2>
         <p className="mt-2 text-lg text-white/62">{song.artist}</p>
@@ -429,7 +402,7 @@ function SongHeader({
             <AlertDialogHeader>
               <AlertDialogTitle>删除《{song.title}》？</AlertDialogTitle>
               <AlertDialogDescription>
-                这会删除此歌曲及其保存在本机的歌词，无法撤销。
+                本机歌词也会删除，无法撤销。
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -503,9 +476,7 @@ function SongFormDialog({
             <DialogTitle className="text-xl text-white">
               {add ? '添加歌曲' : '编辑歌曲资料'}
             </DialogTitle>
-            <DialogDescription className="text-base">
-              歌名和歌手为必填，资料链接可以稍后补充。
-            </DialogDescription>
+            <DialogDescription>歌名和歌手为必填。</DialogDescription>
           </DialogHeader>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <FormField label="歌名" required>
@@ -583,7 +554,6 @@ function EmptyLibrary({ onAdd }: { onAdd: (draft: SongDraft) => void }) {
       <div>
         <Music2 aria-hidden="true" className="mx-auto size-10 text-primary" />
         <h2 className="mt-4 text-2xl font-semibold text-white">歌本还是空的</h2>
-        <p className="mt-2 text-base text-white/52">添加一首想学唱的日语歌。</p>
         <div className="mt-5">
           <SongFormDialog mode="add" onSave={onAdd} />
         </div>
@@ -608,30 +578,17 @@ function LyricsEditor({
   songTitle: string;
 }) {
   return (
-    <section
-      aria-labelledby="lyrics-input-title"
-      className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_260px]"
-    >
+    <section aria-labelledby="lyrics-input-title">
       <form
-        className="rounded-[1.75rem] border border-white/10 bg-card p-5 shadow-[0_24px_80px_rgb(2_6_23/28%)] sm:p-8"
+        className="rounded-2xl border border-white/10 bg-card p-5 shadow-[0_24px_80px_rgb(2_6_23/28%)] sm:p-7"
         onSubmit={onSubmit}
       >
-        <div className="mb-5 flex items-start gap-3">
-          <div className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Sparkles aria-hidden="true" className="size-5" />
-          </div>
-          <div>
-            <h2
-              id="lyrics-input-title"
-              className="text-xl font-semibold text-white"
-            >
-              粘贴日语歌词
-            </h2>
-            <p className="mt-1 text-base leading-relaxed text-white/58">
-              每行一句，空行会保留为段落间隔。
-            </p>
-          </div>
-        </div>
+        <h2
+          id="lyrics-input-title"
+          className="mb-4 text-xl font-semibold text-white"
+        >
+          日语歌词
+        </h2>
         <label className="sr-only" htmlFor="lyrics-input">
           《{songTitle}》日语歌词
         </label>
@@ -644,9 +601,7 @@ function LyricsEditor({
           className="min-h-64 resize-y rounded-2xl border-white/12 bg-[#07122b] p-5 text-base leading-8 text-white placeholder:text-white/34 focus-visible:border-primary focus-visible:ring-primary/20"
           maxLength={MAX_LYRICS_LENGTH}
           onChange={(event) => onLyricsChange(event.target.value)}
-          placeholder={
-            '在这里粘贴你合法取得的日语歌词…\n\n网站不会内置或上传完整歌词。'
-          }
+          placeholder="粘贴歌词，每行一句…"
           value={rawLyrics}
         />
         {error ? (
@@ -664,7 +619,7 @@ function LyricsEditor({
             className="flex items-center gap-2 text-sm text-white/48"
           >
             <LockKeyhole aria-hidden="true" className="size-4 text-primary" />{' '}
-            歌词只保存在这台设备
+            仅存本机
           </p>
           <Button
             className="h-12 rounded-full px-6 text-base font-semibold shadow-[0_10px_30px_rgb(250_204_21/18%)]"
@@ -675,32 +630,6 @@ function LyricsEditor({
           </Button>
         </div>
       </form>
-      <aside className="rounded-[1.75rem] border border-primary/18 bg-primary/[0.07] p-6">
-        <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">
-          显示顺序
-        </p>
-        <ol className="mt-6 space-y-5">
-          {[
-            ['日', '日语原文', '保留你的原始换行'],
-            ['R', '罗马音', '平文式读音'],
-            ['中', '中文音译', '便于跟唱的近似音'],
-          ].map(([mark, title, detail]) => (
-            <li key={mark} className="flex gap-3">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/8 text-sm font-semibold text-primary">
-                {mark}
-              </span>
-              <span>
-                <strong className="block text-base font-medium text-white">
-                  {title}
-                </strong>
-                <span className="mt-0.5 block text-sm leading-relaxed text-white/48">
-                  {detail}
-                </span>
-              </span>
-            </li>
-          ))}
-        </ol>
-      </aside>
     </section>
   );
 }
@@ -715,58 +644,45 @@ function LyricsReader({
   onEdit: () => void;
 }) {
   return (
-    <section aria-labelledby="lyrics-reader-title">
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">
-            三行对照
-          </p>
-          <h2
-            id="lyrics-reader-title"
-            className="mt-1 text-2xl font-semibold text-white"
+    <section aria-label="对照歌词">
+      <div className="mb-4 flex flex-wrap justify-end gap-2">
+        <Button
+          className="h-11 rounded-full px-4"
+          onClick={onEdit}
+          type="button"
+          variant="outline"
+        >
+          <ArrowLeft aria-hidden="true" /> 重新编辑
+        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger
+            render={
+              <Button
+                className="h-11 rounded-full px-4"
+                type="button"
+                variant="destructive"
+              />
+            }
           >
-            跟着读，再跟着唱
-          </h2>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            className="h-11 rounded-full px-4"
-            onClick={onEdit}
-            type="button"
-            variant="outline"
-          >
-            <ArrowLeft aria-hidden="true" /> 重新编辑
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger
-              render={
-                <Button
-                  className="h-11 rounded-full px-4"
-                  type="button"
-                  variant="destructive"
-                />
-              }
-            >
-              <Trash2 aria-hidden="true" /> 清除此歌歌词
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>清除此歌的本机歌词？</AlertDialogTitle>
-                <AlertDialogDescription>
-                  歌曲资料会保留，但粘贴的歌词和生成结果将被删除。
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>取消</AlertDialogCancel>
-                <AlertDialogAction onClick={onClear} variant="destructive">
-                  确认清除
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
+            <Trash2 aria-hidden="true" /> 清除此歌歌词
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>清除此歌的本机歌词？</AlertDialogTitle>
+              <AlertDialogDescription>
+                歌曲资料会保留，但粘贴的歌词和生成结果将被删除。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={onClear} variant="destructive">
+                确认清除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
-      <div className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-card shadow-[0_24px_80px_rgb(2_6_23/28%)]">
+      <div className="overflow-hidden rounded-2xl border border-white/10 bg-card shadow-[0_24px_80px_rgb(2_6_23/28%)]">
         {lines.map((line, index) =>
           line.isBreak ? (
             <div
@@ -795,15 +711,9 @@ function LyricsReader({
           ),
         )}
       </div>
-      <div className="mt-5 flex items-start gap-3 rounded-2xl border border-primary/16 bg-primary/[0.06] p-4 text-sm leading-relaxed text-white/56">
-        <RotateCcw
-          aria-hidden="true"
-          className="mt-0.5 size-4 shrink-0 text-primary"
-        />
-        <p>
-          “·”表示促音时短暂停顿，“—”表示拉长前一个音。歌曲中的连读、弱化和节奏请以原唱为准。
-        </p>
-      </div>
+      <p className="mt-3 text-sm text-white/42">
+        · 短停顿　— 长音　中文为跟唱近似音
+      </p>
     </section>
   );
 }
