@@ -261,6 +261,15 @@ export function lyricLinesToRawText(lines: LyricLine[]): string {
   return lines.map((line) => (line.isBreak ? '' : line.japanese)).join('\n');
 }
 
+export type LyricCopyTrack = 'japanese' | 'romaji' | 'chinesePhonetic';
+
+export function lyricTrackToText(
+  lines: LyricLine[],
+  track: LyricCopyTrack,
+): string {
+  return lines.map((line) => (line.isBreak ? '' : line[track])).join('\n');
+}
+
 export function getLinePlaybackRange(
   lines: LyricLine[],
   index: number,

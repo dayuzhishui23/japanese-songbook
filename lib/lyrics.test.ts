@@ -6,6 +6,7 @@ import {
   adjacentLyricIndex,
   getLinePlaybackRange,
   lyricLinesToRawText,
+  lyricTrackToText,
   MAX_LYRICS_LENGTH,
   setLyricStartTime,
   validateLyricsInput,
@@ -53,6 +54,12 @@ void test('rebuilds editable source text while retaining stanza breaks', () => {
     },
   ];
   assert.equal(lyricLinesToRawText(lines), '一行目\n\n二行目');
+  assert.equal(lyricTrackToText(lines, 'japanese'), '一行目\n\n二行目');
+  assert.equal(lyricTrackToText(lines, 'romaji'), 'ichigyoume\n\nnigyoume');
+  assert.equal(
+    lyricTrackToText(lines, 'chinesePhonetic'),
+    '一七 giou 咩\n\n尼 giou 咩',
+  );
 });
 
 void test('uses the next marked lyric as the current line end', () => {
@@ -122,16 +129,27 @@ void test('moves between lyric lines while skipping stanza breaks', () => {
 void test('finds the active timed lyric during playback', () => {
   const lines: LyricLine[] = [
     {
-      japanese: '一', reading: '', romaji: '', chinesePhonetic: '',
-      isBreak: false, startTime: 2,
+      japanese: '一',
+      reading: '',
+      romaji: '',
+      chinesePhonetic: '',
+      isBreak: false,
+      startTime: 2,
     },
     {
-      japanese: '', reading: '', romaji: '', chinesePhonetic: '',
+      japanese: '',
+      reading: '',
+      romaji: '',
+      chinesePhonetic: '',
       isBreak: true,
     },
     {
-      japanese: '二', reading: '', romaji: '', chinesePhonetic: '',
-      isBreak: false, startTime: 5,
+      japanese: '二',
+      reading: '',
+      romaji: '',
+      chinesePhonetic: '',
+      isBreak: false,
+      startTime: 5,
     },
   ];
   assert.equal(activeLyricIndexAtTime(lines, 1.9), null);

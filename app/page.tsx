@@ -2,6 +2,7 @@
 
 import {
   AudioLines,
+  Copy,
   Download,
   FileUp,
   LoaderCircle,
@@ -27,6 +28,12 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Dialog,
   DialogClose,
   DialogContent,
@@ -43,11 +50,13 @@ import {
   convertLyrics,
   getLinePlaybackRange,
   lyricLinesToRawText,
+  lyricTrackToText,
   MAX_LYRICS_LENGTH,
   PHONETIC_RULES_VERSION,
   prepareLyricsConverter,
   regenerateLyricLine,
   type LyricLine,
+  type LyricCopyTrack,
 } from '@/lib/lyrics';
 import { normalizeReadingKey, readingToChinese } from '@/lib/phonetic';
 import type { OnlineSongResult, TimedLyricLine } from '@/lib/online-music';
@@ -1560,6 +1569,59 @@ function LyricsEditor({
   );
 }
 
+function CopyLyricsMenu({ lines }: { lines: LyricLine[] }) {
+  const [copyStatus, setCopyStatus] = useState('');
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    },
+    [],
+  );
+
+  async function copyTrack(track: LyricCopyTrack, label: string) {
+    try {
+      await navigator.clipboard.writeText(lyricTrackToText(lines, track));
+      setCopyStatus(`已复制${label}`);
+    } catch {
+      setCopyStatus('复制失败');
+    }
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    statusTimerRef.current = setTimeout(() => setCopyStatus(''), 1_800);
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<Button className="h-11 rounded-full px-4" variant="outline" />}
+      >
+        <Copy aria-hidden="true" /> {copyStatus || '复制歌词'}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-40 p-1.5">
+        <DropdownMenuItem
+          className="min-h-10 px-3 text-sm"
+          onClick={() => void copyTrack('japanese', '日语')}
+        >
+          复制日语
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="min-h-10 px-3 text-sm"
+          onClick={() => void copyTrack('romaji', '罗马音')}
+        >
+          复制罗马音
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="min-h-10 px-3 text-sm"
+          onClick={() => void copyTrack('chinesePhonetic', '中文音译')}
+        >
+          复制中文音译
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function LyricsReader({
   corrections,
   lines,
@@ -1892,14 +1954,17 @@ function LyricsReader({
             </Button>
           </>
         ) : (
-          <Button
-            className="h-11 rounded-full px-4"
-            onClick={startEditing}
-            type="button"
-            variant="outline"
-          >
-            <Pencil aria-hidden="true" /> 编辑歌词
-          </Button>
+          <>
+            <Button
+              className="h-11 rounded-full px-4"
+              onClick={startEditing}
+              type="button"
+              variant="outline"
+            >
+              <Pencil aria-hidden="true" /> 编辑歌词
+            </Button>
+            <CopyLyricsMenu lines={lines} />
+          </>
         )}
         {!isEditingLines ? (
           <Button
