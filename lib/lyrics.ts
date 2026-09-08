@@ -270,6 +270,27 @@ export function lyricTrackToText(
   return lines.map((line) => (line.isBreak ? '' : line[track])).join('\n');
 }
 
+export function lyricTracksToText(
+  lines: LyricLine[],
+  tracks: LyricCopyTrack[],
+): string {
+  if (!tracks.length) return '';
+  if (tracks.length === 1) return lyricTrackToText(lines, tracks[0]!);
+
+  const stanzas: string[][] = [];
+  let stanza: string[] = [];
+  for (const line of lines) {
+    if (line.isBreak) {
+      if (stanza.length) stanzas.push(stanza);
+      stanza = [];
+    } else {
+      stanza.push(tracks.map((track) => line[track]).join('\n'));
+    }
+  }
+  if (stanza.length) stanzas.push(stanza);
+  return stanzas.map((items) => items.join('\n\n')).join('\n\n\n');
+}
+
 export function getLinePlaybackRange(
   lines: LyricLine[],
   index: number,

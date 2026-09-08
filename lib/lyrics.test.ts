@@ -7,6 +7,7 @@ import {
   getLinePlaybackRange,
   lyricLinesToRawText,
   lyricTrackToText,
+  lyricTracksToText,
   MAX_LYRICS_LENGTH,
   setLyricStartTime,
   validateLyricsInput,
@@ -60,6 +61,11 @@ void test('rebuilds editable source text while retaining stanza breaks', () => {
     lyricTrackToText(lines, 'chinesePhonetic'),
     '一七 giou 咩\n\n尼 giou 咩',
   );
+  assert.equal(
+    lyricTracksToText(lines, ['japanese', 'romaji', 'chinesePhonetic']),
+    '一行目\nichigyoume\n一七 giou 咩\n\n\n二行目\nnigyoume\n尼 giou 咩',
+  );
+  assert.equal(lyricTracksToText(lines, []), '');
 });
 
 void test('uses the next marked lyric as the current line end', () => {

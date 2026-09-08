@@ -27,12 +27,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogClose,
@@ -50,7 +45,7 @@ import {
   convertLyrics,
   getLinePlaybackRange,
   lyricLinesToRawText,
-  lyricTrackToText,
+  lyricTracksToText,
   MAX_LYRICS_LENGTH,
   PHONETIC_RULES_VERSION,
   prepareLyricsConverter,
@@ -1569,9 +1564,23 @@ function LyricsEditor({
   );
 }
 
-function CopyLyricsMenu({ lines }: { lines: LyricLine[] }) {
+function CopyLyricsDialog({ lines }: { lines: LyricLine[] }) {
+  const [open, setOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
+  const [selected, setSelected] = useState<Record<LyricCopyTrack, boolean>>({
+    japanese: true,
+    romaji: true,
+    chinesePhonetic: true,
+  });
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const options: Array<{ track: LyricCopyTrack; label: string }> = [
+    { track: 'japanese', label: '日语' },
+    { track: 'romaji', label: '罗马音' },
+    { track: 'chinesePhonetic', label: '中文音译' },
+  ];
+  const selectedTracks = options
+    .filter(({ track }) => selected[track])
+    .map(({ track }) => track);
 
   useEffect(
     () => () => {
@@ -1580,10 +1589,13 @@ function CopyLyricsMenu({ lines }: { lines: LyricLine[] }) {
     [],
   );
 
-  async function copyTrack(track: LyricCopyTrack, label: string) {
+  async function copySelected() {
     try {
-      await navigator.clipboard.writeText(lyricTrackToText(lines, track));
-      setCopyStatus(`已复制${label}`);
+      await navigator.clipboard.writeText(
+        lyricTracksToText(lines, selectedTracks),
+      );
+      setCopyStatus(`已复制 ${selectedTracks.length} 项`);
+      setOpen(false);
     } catch {
       setCopyStatus('复制失败');
     }
@@ -1592,33 +1604,56 @@ function CopyLyricsMenu({ lines }: { lines: LyricLine[] }) {
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
+    <Dialog onOpenChange={setOpen} open={open}>
+      <DialogTrigger
         render={<Button className="h-11 rounded-full px-4" variant="outline" />}
       >
         <Copy aria-hidden="true" /> {copyStatus || '复制歌词'}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-40 p-1.5">
-        <DropdownMenuItem
-          className="min-h-10 px-3 text-sm"
-          onClick={() => void copyTrack('japanese', '日语')}
-        >
-          复制日语
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="min-h-10 px-3 text-sm"
-          onClick={() => void copyTrack('romaji', '罗马音')}
-        >
-          复制罗马音
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="min-h-10 px-3 text-sm"
-          onClick={() => void copyTrack('chinesePhonetic', '中文音译')}
-        >
-          复制中文音译
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </DialogTrigger>
+      <DialogContent className="max-w-sm bg-popover p-6">
+        <DialogHeader>
+          <DialogTitle className="text-xl">复制歌词</DialogTitle>
+          <DialogDescription>
+            选择一项或多项，按当前顺序复制。
+          </DialogDescription>
+        </DialogHeader>
+        <fieldset className="grid gap-2">
+          <legend className="sr-only">选择复制内容</legend>
+          {options.map(({ track, label }) => (
+            <label
+              key={track}
+              className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-foreground/10 bg-background px-4 text-base transition-colors hover:border-primary/35"
+              htmlFor={`copy-track-${track}`}
+            >
+              <Checkbox
+                checked={selected[track]}
+                id={`copy-track-${track}`}
+                onCheckedChange={(checked) =>
+                  setSelected((current) => ({
+                    ...current,
+                    [track]: Boolean(checked),
+                  }))
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+        <DialogFooter>
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            取消
+          </DialogClose>
+          <Button
+            disabled={!selectedTracks.length}
+            onClick={() => void copySelected()}
+            type="button"
+          >
+            复制所选
+            {selectedTracks.length ? `（${selectedTracks.length}）` : ''}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1963,7 +1998,7 @@ function LyricsReader({
             >
               <Pencil aria-hidden="true" /> 编辑歌词
             </Button>
-            <CopyLyricsMenu lines={lines} />
+            <CopyLyricsDialog lines={lines} />
           </>
         )}
         {!isEditingLines ? (
