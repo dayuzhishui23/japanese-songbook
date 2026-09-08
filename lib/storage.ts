@@ -66,20 +66,30 @@ function isLyricLine(value: unknown): value is LyricLine {
 export function createDefaultLibrary(): SongLibrary {
   return {
     version: 3,
-    activeSongId: LEMON_ID,
+    activeSongId: '',
     phoneticCorrections: {},
-    songs: [
-      {
-        id: LEMON_ID,
-        title: 'Lemon',
-        artist: '米津玄師',
-        officialUrl: 'https://reissuerecords.net/discography/lemon/',
-        mvUrl: 'https://www.youtube.com/watch?v=SX_ViT4Ra7k',
-        rawLyrics: '',
-        lines: [],
-        updatedAt: '',
-      },
-    ],
+    songs: [],
+  };
+}
+
+function removeEmptyStarterLemon(library: SongLibrary): SongLibrary {
+  const songs = library.songs.filter(
+    (song) =>
+      !(
+        song.id === LEMON_ID &&
+        !song.rawLyrics.trim() &&
+        !song.lines.length &&
+        !song.sourceId
+      ),
+  );
+  if (songs.length === library.songs.length) return library;
+  return {
+    ...library,
+    activeSongId:
+      library.activeSongId === LEMON_ID
+        ? (songs[0]?.id ?? '')
+        : library.activeSongId,
+    songs,
   };
 }
 
@@ -180,14 +190,21 @@ function migrateLegacy(value: unknown): SongLibrary | null {
     return null;
   }
 
-  const library = createDefaultLibrary();
-  library.songs[0] = {
-    ...library.songs[0],
+  const song: SongRecord = {
+    id: LEMON_ID,
+    title: 'Lemon',
+    artist: '米津玄師',
+    officialUrl: 'https://reissuerecords.net/discography/lemon/',
+    mvUrl: 'https://www.youtube.com/watch?v=SX_ViT4Ra7k',
     rawLyrics: legacy.rawLyrics,
     lines: (legacy.lines as LyricLine[]).map(migrateLine),
     updatedAt: typeof legacy.savedAt === 'string' ? legacy.savedAt : '',
   };
-  return library;
+  return {
+    ...createDefaultLibrary(),
+    activeSongId: LEMON_ID,
+    songs: [song],
+  };
 }
 
 export function loadSongLibrary(storage: StorageReader): SongLibrary {
@@ -195,7 +212,11 @@ export function loadSongLibrary(storage: StorageReader): SongLibrary {
     const current = storage.getItem(SONG_LIBRARY_STORAGE_KEY);
     if (current) {
       const parsed: unknown = JSON.parse(current);
-      if (isSongLibrary(parsed)) return parsed;
+      if (isSongLibrary(parsed)) {
+        const library = removeEmptyStarterLemon(parsed);
+        if (library !== parsed) saveSongLibrary(storage, library);
+        return library;
+      }
     }
 
     const previous = storage.getItem(PREVIOUS_SONG_LIBRARY_STORAGE_KEY);

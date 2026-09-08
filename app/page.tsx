@@ -77,6 +77,7 @@ type ModelContext = {
 
 type SongDraft = Pick<SongRecord, 'title' | 'artist' | 'officialUrl' | 'mvUrl'>;
 type GenerationStage = 'lyrics' | 'dictionary' | 'phonetic';
+type ViewMode = 'home' | 'practice';
 type SongChoiceHandler = (
   song: OnlineSongResult,
   onProgress: (stage: GenerationStage) => void,
@@ -112,6 +113,7 @@ export default function Home() {
   const [isEditing, setIsEditing] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
+  const [viewMode, setViewMode] = useState<ViewMode>('home');
 
   const activeSong = useMemo(
     () =>
@@ -227,6 +229,7 @@ export default function Home() {
     setRawLyrics(song.rawLyrics);
     setIsEditing(!song.lines.length);
     setError('');
+    setViewMode('practice');
   }
 
   async function addOnlineSong(
@@ -288,6 +291,7 @@ export default function Home() {
       persist({ ...library, activeSongId: song.id, songs });
       setRawLyrics(payload.lyrics);
       setIsEditing(false);
+      setViewMode('practice');
     } catch (onlineError) {
       const message = errorMessage(onlineError);
       setError(message);
@@ -297,14 +301,18 @@ export default function Home() {
     }
   }
 
-  function addManualSong(suggestedTitle: string) {
+  function addManualSong(
+    suggestedTitle: string,
+    suggestedArtist = '未知歌手',
+    lyrics = '',
+  ) {
     const song: SongRecord = {
       id: createSongId(),
       title: suggestedTitle.trim() || '未命名歌曲',
-      artist: '未知歌手',
+      artist: suggestedArtist.trim() || '未知歌手',
       officialUrl: '',
       mvUrl: '',
-      rawLyrics: '',
+      rawLyrics: lyrics,
       lines: [],
       updatedAt: '',
     };
@@ -313,9 +321,10 @@ export default function Home() {
       activeSongId: song.id,
       songs: [...library.songs, song],
     });
-    setRawLyrics('');
+    setRawLyrics(lyrics);
     setIsEditing(true);
     setError('');
+    setViewMode('practice');
   }
 
   function updateSong(draft: SongDraft) {
@@ -349,6 +358,7 @@ export default function Home() {
     setRawLyrics(nextActive?.rawLyrics ?? '');
     setIsEditing(!nextActive?.lines.length);
     setError('');
+    if (!nextActive) setViewMode('home');
   }
 
   function clearCurrentLyrics() {
@@ -459,7 +469,11 @@ export default function Home() {
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-8 sm:py-8">
         <header className="mb-5 flex items-center justify-between gap-4 border-b border-foreground/10 pb-5">
-          <div className="flex items-center gap-3">
+          <button
+            className="flex items-center gap-3 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+            onClick={() => setViewMode('home')}
+            type="button"
+          >
             <span
               aria-hidden="true"
               className="size-11 rounded-xl bg-cover bg-center sm:size-14"
@@ -468,66 +482,258 @@ export default function Home() {
             <h1 className="font-heading text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-4xl">
               日本語歌集
             </h1>
-          </div>
-          <div className="flex flex-wrap justify-end gap-2">
-            <MoreActionsDialog
-              library={library}
-              onClear={clearCurrentLyrics}
-              onDelete={deleteSong}
-              onImport={importLibrary}
-              onUpdate={updateSong}
-              song={activeSong}
-            />
-            <OnlineSongSearchDialog
-              onChoose={addOnlineSong}
-              onManual={addManualSong}
-            />
-          </div>
-        </header>
-
-        <SongShelf
-          activeSongId={library.activeSongId}
-          onSelect={selectSong}
-          songs={library.songs}
-        />
-
-        {activeSong ? (
-          <div className="song-view-enter" key={activeSong.id}>
-            <section className="mb-4 px-1" aria-label="当前歌曲">
-              <h2 className="truncate text-2xl font-semibold tracking-[-0.025em] text-foreground sm:text-3xl">
-                {activeSong.title}
-              </h2>
-              <p className="mt-1 truncate text-sm text-foreground/52 sm:text-base">
-                {activeSong.artist}
-              </p>
-            </section>
-            {isEditing ? (
-              <LyricsEditor
-                error={error}
-                isGenerating={isGenerating}
-                onLyricsChange={setRawLyrics}
-                onSubmit={handleSubmit}
-                rawLyrics={rawLyrics}
-                songTitle={activeSong.title}
-              />
-            ) : (
-              <LyricsReader
-                corrections={library.phoneticCorrections}
-                lines={activeSong.lines}
-                onDeleteCorrection={deletePhoneticCorrection}
-                onEdit={() => setIsEditing(true)}
-                onSave={saveEditedLines}
-                onSaveCorrection={savePhoneticCorrection}
-                onSaveWithCorrections={saveLinesAndCorrections}
+          </button>
+          {viewMode === 'practice' ? (
+            <div className="flex flex-wrap justify-end gap-2">
+              <MoreActionsDialog
+                library={library}
+                onClear={clearCurrentLyrics}
+                onDelete={deleteSong}
+                onImport={importLibrary}
+                onUpdate={updateSong}
                 song={activeSong}
               />
-            )}
+              <OnlineSongSearchDialog
+                onChoose={addOnlineSong}
+                onManual={addManualSong}
+              />
+            </div>
+          ) : null}
+        </header>
+
+        {viewMode === 'home' ? (
+          <StartScreen
+            activeSongId={library.activeSongId}
+            onChoose={addOnlineSong}
+            onManual={addManualSong}
+            onSelect={selectSong}
+            songs={library.songs}
+          />
+        ) : activeSong ? (
+          <div className="grid items-start gap-5 lg:grid-cols-[15rem_minmax(0,1fr)]">
+            <PracticeSongNav
+              activeSongId={activeSong.id}
+              onSelect={selectSong}
+              songs={library.songs}
+            />
+            <div className="song-view-enter min-w-0" key={activeSong.id}>
+              {isEditing ? (
+                <>
+                  <SongTitle song={activeSong} />
+                  <LyricsEditor
+                    error={error}
+                    isGenerating={isGenerating}
+                    onLyricsChange={setRawLyrics}
+                    onSubmit={handleSubmit}
+                    rawLyrics={rawLyrics}
+                    songTitle={activeSong.title}
+                  />
+                </>
+              ) : (
+                <LyricsReader
+                  corrections={library.phoneticCorrections}
+                  lines={activeSong.lines}
+                  onDeleteCorrection={deletePhoneticCorrection}
+                  onEdit={() => setIsEditing(true)}
+                  onSave={saveEditedLines}
+                  onSaveCorrection={savePhoneticCorrection}
+                  onSaveWithCorrections={saveLinesAndCorrections}
+                  song={activeSong}
+                />
+              )}
+            </div>
           </div>
         ) : (
-          <EmptyLibrary onChoose={addOnlineSong} onManual={addManualSong} />
+          <StartScreen
+            activeSongId=""
+            onChoose={addOnlineSong}
+            onManual={addManualSong}
+            onSelect={selectSong}
+            songs={library.songs}
+          />
         )}
       </div>
     </main>
+  );
+}
+
+function StartScreen({
+  activeSongId,
+  onChoose,
+  onManual,
+  onSelect,
+  songs,
+}: {
+  activeSongId: string;
+  onChoose: SongChoiceHandler;
+  onManual: (title: string, artist?: string, lyrics?: string) => void;
+  onSelect: (song: SongRecord) => void;
+  songs: SongRecord[];
+}) {
+  const recentSongs = [...songs]
+    .filter((song) => song.lines.length)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 8);
+
+  return (
+    <section className="mx-auto flex min-h-[65vh] w-full max-w-2xl flex-col items-center pt-8 sm:pt-16">
+      <div className="text-center">
+        <h2
+          className="text-3xl font-semibold tracking-[-0.035em] text-foreground sm:text-4xl"
+          lang="ja"
+        >
+          好きな曲を自由に選ぼう
+        </h2>
+        <p className="mt-2 text-sm tracking-[0.04em] text-foreground/48 sm:text-base">
+          Suki na kyoku o jiyū ni erabō
+        </p>
+      </div>
+      <div className="mt-8 w-full">
+        <OnlineSongSearchDialog
+          onChoose={onChoose}
+          onManual={onManual}
+          prominent
+        />
+      </div>
+      {recentSongs.length ? (
+        <div className="mt-10 w-full">
+          <p className="mb-3 text-sm font-medium text-foreground/48">
+            最近练习
+          </p>
+          <SongShelf
+            activeSongId={activeSongId}
+            onSelect={onSelect}
+            songs={recentSongs}
+          />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function PasteSongStarter({
+  onManual,
+}: {
+  onManual: (title: string, artist?: string, lyrics?: string) => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [artist, setArtist] = useState('');
+  const [lyrics, setLyrics] = useState('');
+
+  function submit(event: React.SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onManual(title, artist, lyrics);
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input
+          className="h-11 bg-background text-base"
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="歌名"
+          value={title}
+        />
+        <Input
+          className="h-11 bg-background text-base"
+          onChange={(event) => setArtist(event.target.value)}
+          placeholder="歌手（可不填）"
+          value={artist}
+        />
+      </div>
+      <Textarea
+        className="mt-3 min-h-40 resize-y bg-background p-4 text-base leading-7"
+        maxLength={MAX_LYRICS_LENGTH}
+        onChange={(event) => setLyrics(event.target.value)}
+        placeholder="粘贴日语歌词，每行一句…"
+        required
+        value={lyrics}
+      />
+      <div className="mt-4 flex justify-end">
+        <Button className="h-11 rounded-full px-5" type="submit">
+          继续生成
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function PracticeSongNav({
+  activeSongId,
+  onSelect,
+  songs,
+}: {
+  activeSongId: string;
+  onSelect: (song: SongRecord) => void;
+  songs: SongRecord[];
+}) {
+  const recentSongs = [...songs].sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt),
+  );
+
+  return (
+    <>
+      <label className="mb-4 block lg:hidden">
+        <span className="sr-only">切换歌曲</span>
+        <select
+          className="h-12 w-full rounded-xl border border-foreground/12 bg-popover px-4 text-base text-foreground outline-none focus:border-primary"
+          onChange={(event) => {
+            const song = songs.find((item) => item.id === event.target.value);
+            if (song) onSelect(song);
+          }}
+          value={activeSongId}
+        >
+          {recentSongs.map((song) => (
+            <option key={song.id} value={song.id}>
+              {song.title} · {song.artist}
+            </option>
+          ))}
+        </select>
+      </label>
+      <aside className="sticky top-5 hidden max-h-[calc(100vh-2.5rem)] overflow-y-auto rounded-2xl border border-foreground/10 bg-card/55 p-3 lg:block">
+        <p className="px-2 pb-2 text-sm font-medium text-foreground/48">
+          我的歌本
+        </p>
+        <div className="space-y-1">
+          {recentSongs.map((song) => (
+            <button
+              key={song.id}
+              aria-current={song.id === activeSongId ? 'true' : undefined}
+              className={`w-full rounded-xl px-3 py-3 text-left transition-colors ${
+                song.id === activeSongId
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-foreground hover:bg-popover/70'
+              }`}
+              onClick={() => onSelect(song)}
+              type="button"
+            >
+              <strong className="block truncate text-sm">{song.title}</strong>
+              <span
+                className={`mt-1 block truncate text-xs ${song.id === activeSongId ? 'text-primary-foreground/65' : 'text-foreground/42'}`}
+              >
+                {song.artist}
+              </span>
+            </button>
+          ))}
+        </div>
+      </aside>
+    </>
+  );
+}
+
+function SongTitle({ song }: { song: SongRecord }) {
+  return (
+    <section
+      className="mb-4 rounded-2xl border border-foreground/10 bg-popover px-5 py-4"
+      aria-label="当前歌曲"
+    >
+      <h2 className="truncate text-2xl font-semibold tracking-[-0.025em] text-foreground sm:text-3xl">
+        {song.title}
+      </h2>
+      <p className="mt-1 truncate text-sm text-foreground/52 sm:text-base">
+        {song.artist}
+      </p>
+    </section>
   );
 }
 
@@ -857,9 +1063,11 @@ function MoreActionsDialog({
 function OnlineSongSearchDialog({
   onChoose,
   onManual,
+  prominent = false,
 }: {
   onChoose: SongChoiceHandler;
-  onManual: (suggestedTitle: string) => void;
+  onManual: (suggestedTitle: string, artist?: string, lyrics?: string) => void;
+  prominent?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -869,6 +1077,8 @@ function OnlineSongSearchDialog({
   const [generationStage, setGenerationStage] =
     useState<GenerationStage | null>(null);
   const [searchError, setSearchError] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
 
   async function searchSongs(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -877,6 +1087,7 @@ function OnlineSongSearchDialog({
     setIsSearching(true);
     setSearchError('');
     setResults([]);
+    setHasSearched(false);
     try {
       const response = await fetch(
         apiUrl(`/api/search?q=${encodeURIComponent(normalized)}`),
@@ -887,6 +1098,7 @@ function OnlineSongSearchDialog({
       };
       if (!response.ok) throw new Error(payload.error || '搜索失败。');
       setResults(payload.songs ?? []);
+      setHasSearched(true);
       if (!payload.songs?.length) {
         setSearchError('没有找到歌曲。可以试试“歌名＋歌手”，或直接粘贴歌词。');
       }
@@ -914,6 +1126,115 @@ function OnlineSongSearchDialog({
     }
   }
 
+  if (prominent) {
+    return (
+      <section
+        aria-label={manualMode ? '粘贴歌词' : '搜索歌曲'}
+        className="panel-enter rounded-2xl border border-foreground/10 bg-popover p-4 shadow-[0_20px_60px_rgb(52_69_54/10%)] sm:p-5"
+      >
+        {manualMode ? (
+          <>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold text-foreground">
+                粘贴歌词
+              </h3>
+              <Button
+                onClick={() => setManualMode(false)}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                返回搜索
+              </Button>
+            </div>
+            <PasteSongStarter onManual={onManual} />
+          </>
+        ) : (
+          <>
+            <form className="flex gap-2" onSubmit={searchSongs}>
+              <Input
+                aria-label="输入歌名或歌手"
+                className="h-14 min-w-0 bg-background px-5 text-base"
+                maxLength={100}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setHasSearched(false);
+                }}
+                placeholder="输入歌名或歌手…"
+                value={query}
+              />
+              <Button
+                className="h-14 shrink-0 rounded-full px-5"
+                disabled={isSearching || Boolean(loadingSongId)}
+                type="submit"
+              >
+                {isSearching ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Search />
+                )}
+                <span className="hidden sm:inline">搜索</span>
+              </Button>
+            </form>
+            {searchError ? (
+              <p className="mt-3 text-sm text-rose-700" role="alert">
+                {searchError}
+              </p>
+            ) : null}
+            {generationStage ? (
+              <GenerationProgress stage={generationStage} />
+            ) : null}
+            {results.length ? (
+              <div className="mt-4 space-y-2">
+                {results.map((song) => (
+                  <button
+                    key={song.id}
+                    className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-foreground/10 bg-background px-4 py-3 text-left transition-colors hover:border-primary/45 focus-visible:outline-2 focus-visible:outline-primary"
+                    disabled={Boolean(loadingSongId)}
+                    onClick={() => void chooseSong(song)}
+                    type="button"
+                  >
+                    <Music2
+                      aria-hidden="true"
+                      className="size-5 shrink-0 text-primary"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <strong className="block truncate text-base text-foreground">
+                        {song.title}
+                      </strong>
+                      <span className="mt-0.5 block truncate text-sm text-foreground/48">
+                        {song.artist}
+                      </span>
+                      <span className="mt-1 flex items-center gap-2 text-xs text-foreground/48">
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">
+                          {song.version === 'cover' ? '翻唱' : '原版'}
+                        </span>
+                        <span>{formatDuration(song.duration)}</span>
+                      </span>
+                    </span>
+                    {loadingSongId === song.id ? (
+                      <LoaderCircle className="size-5 animate-spin text-primary" />
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {hasSearched && !results.length && !isSearching ? (
+              <Button
+                className="mt-2"
+                onClick={() => setManualMode(true)}
+                type="button"
+                variant="ghost"
+              >
+                没搜到？粘贴歌词
+              </Button>
+            ) : null}
+          </>
+        )}
+      </section>
+    );
+  }
+
   return (
     <Dialog
       onOpenChange={(nextOpen) => {
@@ -921,101 +1242,124 @@ function OnlineSongSearchDialog({
         if (!nextOpen) {
           setSearchError('');
           setGenerationStage(null);
+          setManualMode(false);
         }
       }}
       open={open}
     >
       <DialogTrigger render={<Button className="h-11 rounded-full px-5" />}>
-        <Search aria-hidden="true" /> 搜歌
+        <Search aria-hidden="true" />
+        搜歌
       </DialogTrigger>
       <DialogContent className="max-w-xl border-foreground/12 bg-card p-6 sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="text-xl text-foreground">
-            搜索歌曲
+            {manualMode ? '粘贴歌词' : '搜索歌曲'}
           </DialogTitle>
           <DialogDescription>
-            输入歌名或歌手，选择后自动生成学唱歌词。
+            {manualMode
+              ? '输入歌曲资料并粘贴日语歌词。'
+              : '输入歌名或歌手，选择后自动生成学唱歌词。'}
           </DialogDescription>
         </DialogHeader>
-        <form className="mt-5 flex gap-2" onSubmit={searchSongs}>
-          <Input
-            className="h-12 min-w-0 bg-background text-base"
-            maxLength={100}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="例如：Lemon 米津玄師"
-            value={query}
-          />
-          <Button
-            className="h-12 shrink-0 rounded-full px-5"
-            disabled={isSearching || Boolean(loadingSongId)}
-            type="submit"
-          >
-            {isSearching ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <Search />
-            )}
-            搜索
-          </Button>
-        </form>
-        {searchError ? (
-          <div className="mt-3 flex flex-wrap items-center gap-3" role="alert">
-            <p className="text-sm text-rose-700">{searchError}</p>
-            {!results.length && !isSearching ? (
-              <Button
-                className="h-9 rounded-full"
-                onClick={() => {
-                  onManual(query);
-                  setOpen(false);
-                  setQuery('');
+        {manualMode ? (
+          <>
+            <PasteSongStarter
+              onManual={(title, artist, lyrics) => {
+                onManual(title, artist, lyrics);
+                setOpen(false);
+              }}
+            />
+            <Button
+              className="justify-self-start"
+              onClick={() => setManualMode(false)}
+              type="button"
+              variant="ghost"
+            >
+              返回搜索
+            </Button>
+          </>
+        ) : (
+          <>
+            <form className="mt-5 flex gap-2" onSubmit={searchSongs}>
+              <Input
+                className="h-12 min-w-0 bg-background text-base"
+                maxLength={100}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setHasSearched(false);
                 }}
-                size="sm"
-                type="button"
-                variant="outline"
+                placeholder="例如：Lemon 米津玄師"
+                value={query}
+              />
+              <Button
+                className="h-12 shrink-0 rounded-full px-5"
+                disabled={isSearching || Boolean(loadingSongId)}
+                type="submit"
               >
-                粘贴歌词
+                {isSearching ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Search />
+                )}
+                搜索
+              </Button>
+            </form>
+            {searchError ? (
+              <p className="mt-3 text-sm text-rose-700" role="alert">
+                {searchError}
+              </p>
+            ) : null}
+            {generationStage ? (
+              <GenerationProgress stage={generationStage} />
+            ) : null}
+            {results.length ? (
+              <div className="mt-4 max-h-[50vh] space-y-2 overflow-y-auto">
+                {results.map((song) => (
+                  <button
+                    key={song.id}
+                    className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-foreground/10 bg-background px-4 py-3 text-left transition hover:border-primary/45 focus-visible:outline-2 focus-visible:outline-primary"
+                    disabled={Boolean(loadingSongId)}
+                    onClick={() => void chooseSong(song)}
+                    type="button"
+                  >
+                    <Music2
+                      aria-hidden="true"
+                      className="size-5 shrink-0 text-primary"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <strong className="block truncate text-base text-foreground">
+                        {song.title}
+                      </strong>
+                      <span className="mt-0.5 block truncate text-sm text-foreground/48">
+                        {song.artist}
+                      </span>
+                      <span className="mt-1 flex items-center gap-2 text-xs text-foreground/48">
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">
+                          {song.version === 'cover' ? '翻唱' : '原版'}
+                        </span>
+                        <span>{formatDuration(song.duration)}</span>
+                      </span>
+                    </span>
+                    {loadingSongId === song.id ? (
+                      <LoaderCircle className="size-5 animate-spin text-primary" />
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {hasSearched && !results.length && !isSearching ? (
+              <Button
+                className="mt-2 justify-self-start"
+                onClick={() => setManualMode(true)}
+                type="button"
+                variant="ghost"
+              >
+                没搜到？粘贴歌词
               </Button>
             ) : null}
-          </div>
-        ) : null}
-        {generationStage ? (
-          <GenerationProgress stage={generationStage} />
-        ) : null}
-        {results.length ? (
-          <div className="mt-4 max-h-[50vh] space-y-2 overflow-y-auto">
-            {results.map((song) => (
-              <button
-                key={song.id}
-                className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-foreground/10 bg-background px-4 py-3 text-left transition hover:border-primary/45 focus-visible:outline-2 focus-visible:outline-primary"
-                disabled={Boolean(loadingSongId)}
-                onClick={() => void chooseSong(song)}
-                type="button"
-              >
-                <Music2
-                  aria-hidden="true"
-                  className="size-5 shrink-0 text-primary"
-                />
-                <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-base text-foreground">
-                    {song.title}
-                  </strong>
-                  <span className="mt-0.5 block truncate text-sm text-foreground/48">
-                    {song.artist}
-                  </span>
-                  <span className="mt-1 flex items-center gap-2 text-xs text-foreground/48">
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">
-                      {song.version === 'cover' ? '翻唱' : '原版'}
-                    </span>
-                    <span>{formatDuration(song.duration)}</span>
-                  </span>
-                </span>
-                {loadingSongId === song.id ? (
-                  <LoaderCircle className="size-5 animate-spin text-primary" />
-                ) : null}
-              </button>
-            ))}
-          </div>
-        ) : null}
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -1047,28 +1391,6 @@ function GenerationProgress({ stage }: { stage: GenerationStage }) {
         </span>
       ))}
     </div>
-  );
-}
-
-function EmptyLibrary({
-  onChoose,
-  onManual,
-}: {
-  onChoose: SongChoiceHandler;
-  onManual: (suggestedTitle: string) => void;
-}) {
-  return (
-    <section className="grid min-h-80 place-items-center rounded-[1.75rem] border border-dashed border-foreground/16 bg-card p-8 text-center">
-      <div>
-        <Music2 aria-hidden="true" className="mx-auto size-10 text-primary" />
-        <h2 className="mt-4 text-2xl font-semibold text-foreground">
-          歌本还是空的
-        </h2>
-        <div className="mt-5">
-          <OnlineSongSearchDialog onChoose={onChoose} onManual={onManual} />
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -1494,6 +1816,10 @@ function LyricsReader({
   }
 
   const visibleLines = isEditingLines ? draftLines : lines;
+  const editingPhoneticLine =
+    editingPhoneticIndex === null
+      ? null
+      : (lines[editingPhoneticIndex] ?? null);
 
   function playLine(index: number) {
     const audio = audioRef.current;
@@ -1510,6 +1836,7 @@ function LyricsReader({
       aria-label="对照歌词"
       className={showAudioSync && audioUrl ? 'pb-52 sm:pb-0' : undefined}
     >
+      <SongTitle song={song} />
       {outdatedCount ? (
         <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-primary/25 bg-primary/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-foreground/72">
@@ -1666,21 +1993,21 @@ function LyricsReader({
           ) : null}
         </div>
       ) : null}
-      <div className="overflow-hidden rounded-2xl border border-foreground/10 bg-card shadow-[0_24px_80px_rgb(52_69_54/12%)]">
+      <div className="overflow-hidden rounded-2xl border border-foreground/10 bg-popover shadow-[0_20px_65px_rgb(52_69_54/9%)]">
         {visibleLines.map((line, index) =>
           line.isBreak ? (
             <div
               key={`break-${index}`}
               aria-hidden="true"
-              className="h-9 border-y border-foreground/[0.035] bg-background/55"
+              className="h-7 border-y border-foreground/[0.035] bg-background/45"
             />
           ) : (
             <article
               key={index}
               id={`lyric-line-${index}`}
-              className={`border-b border-foreground/[0.07] px-5 py-7 transition-colors duration-300 last:border-b-0 sm:px-8 ${
+              className={`border-b border-foreground/[0.07] px-5 py-6 transition-colors duration-300 last:border-b-0 sm:px-8 ${
                 showAudioSync && activeLineIndex === index
-                  ? 'bg-primary/[0.07] ring-1 ring-inset ring-primary/30'
+                  ? 'bg-primary/[0.075]'
                   : ''
               }`}
             >
@@ -1773,66 +2100,21 @@ function LyricsReader({
                   >
                     {line.japanese}
                   </p>
-                  <p className="mt-2 font-mono text-base leading-relaxed text-muted-foreground sm:text-lg">
+                  <p className="mt-2 font-mono text-sm leading-relaxed text-muted-foreground sm:text-base">
                     {line.romaji}
                   </p>
-                  {editingPhoneticIndex === index ? (
-                    <div className="mt-3 rounded-xl border border-primary/25 bg-primary/[0.05] p-3">
-                      <Input
-                        className="h-11 bg-background text-lg text-primary"
-                        onChange={(event) =>
-                          setPhoneticDraft(event.target.value)
-                        }
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') savePhoneticEdit(index);
-                          if (event.key === 'Escape')
-                            setEditingPhoneticIndex(null);
-                        }}
-                        value={phoneticDraft}
-                      />
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <Button
-                          className="h-9 rounded-full"
-                          onClick={() => savePhoneticEdit(index)}
-                          size="sm"
-                          type="button"
-                        >
-                          保存并记住
-                        </Button>
-                        <Button
-                          className="h-9 rounded-full"
-                          onClick={() => setEditingPhoneticIndex(null)}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          取消
-                        </Button>
-                        <Button
-                          className="h-9 rounded-full"
-                          onClick={() => restorePhonetic(index)}
-                          size="sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          恢复自动结果
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      className="mt-2 flex w-full items-center gap-2 rounded-lg text-left text-lg leading-relaxed font-medium tracking-[0.06em] text-primary transition hover:bg-primary/[0.05] focus-visible:outline-2 focus-visible:outline-primary sm:text-xl"
-                      onClick={() => startPhoneticEdit(index)}
-                      type="button"
-                    >
-                      <span>{line.chinesePhonetic}</span>
-                      {line.chinesePhoneticEdited ? (
-                        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs tracking-normal">
-                          已修改
-                        </span>
-                      ) : null}
-                    </button>
-                  )}
+                  <button
+                    className="mt-2 flex w-full items-center gap-2 rounded-lg text-left text-lg leading-relaxed font-medium tracking-[0.02em] text-primary transition-colors hover:bg-primary/[0.05] focus-visible:outline-2 focus-visible:outline-primary sm:text-xl"
+                    onClick={() => startPhoneticEdit(index)}
+                    type="button"
+                  >
+                    <span>{line.chinesePhonetic}</span>
+                    {line.chinesePhoneticEdited ? (
+                      <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs tracking-normal">
+                        已修改
+                      </span>
+                    ) : null}
+                  </button>
                   {showAudioSync ? (
                     <div className="mt-4 border-t border-foreground/[0.07] pt-4">
                       <Button
@@ -1855,6 +2137,62 @@ function LyricsReader({
           ),
         )}
       </div>
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) setEditingPhoneticIndex(null);
+        }}
+        open={editingPhoneticIndex !== null}
+      >
+        <DialogContent className="top-auto right-0 bottom-0 left-0 max-w-none translate-x-0 translate-y-0 gap-5 rounded-t-3xl rounded-b-none bg-popover p-5 data-open:slide-in-from-bottom-6 data-closed:slide-out-to-bottom-6 sm:top-1/2 sm:right-auto sm:bottom-auto sm:left-1/2 sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl">修改中文跟唱音</DialogTitle>
+            <DialogDescription lang="ja">
+              {editingPhoneticLine?.japanese}
+            </DialogDescription>
+          </DialogHeader>
+          <label htmlFor="phonetic-line-editor">
+            <span className="mb-2 block text-sm font-medium text-foreground/60">
+              中文跟唱音
+            </span>
+            <Input
+              id="phonetic-line-editor"
+              className="h-12 bg-background text-lg text-primary"
+              onChange={(event) => setPhoneticDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && editingPhoneticIndex !== null) {
+                  savePhoneticEdit(editingPhoneticIndex);
+                }
+              }}
+              value={phoneticDraft}
+            />
+          </label>
+          <DialogFooter className="-mx-5 -mb-5 rounded-b-none px-5 pb-[max(1rem,env(safe-area-inset-bottom))] sm:-mx-6 sm:-mb-6 sm:rounded-b-2xl sm:px-6">
+            {editingPhoneticIndex !== null ? (
+              <Button
+                onClick={() => restorePhonetic(editingPhoneticIndex)}
+                type="button"
+                variant="ghost"
+              >
+                恢复自动结果
+              </Button>
+            ) : null}
+            <DialogClose render={<Button type="button" variant="outline" />}>
+              取消
+            </DialogClose>
+            <Button
+              disabled={!phoneticDraft.trim()}
+              onClick={() => {
+                if (editingPhoneticIndex !== null) {
+                  savePhoneticEdit(editingPhoneticIndex);
+                }
+              }}
+              type="button"
+            >
+              保存并记住
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

@@ -22,11 +22,11 @@ function fakeStorage(initial: Record<string, string> = {}) {
   };
 }
 
-void test('creates Lemon as the initial empty song', () => {
+void test('starts with an empty songbook', () => {
   const library = createDefaultLibrary();
   assert.equal(library.version, 3);
-  assert.equal(library.songs[0]?.title, 'Lemon');
-  assert.equal(library.songs[0]?.rawLyrics, '');
+  assert.equal(library.activeSongId, '');
+  assert.deepEqual(library.songs, []);
 });
 
 void test('migrates a version 2 song library and starts an empty correction dictionary', () => {
@@ -96,14 +96,46 @@ void test('saves and restores a multi-song library', () => {
 void test('saves and restores online song metadata', () => {
   const storage = fakeStorage();
   const library = createDefaultLibrary();
-  library.songs[0] = {
-    ...library.songs[0]!,
+  library.activeSongId = 'online-song';
+  library.songs.push({
+    id: 'online-song',
+    title: '在线歌曲',
+    artist: '歌手',
+    officialUrl: '',
+    mvUrl: '',
+    rawLyrics: 'かな',
+    lines: [],
+    updatedAt: '2026-09-07T00:00:00.000Z',
     source: 'netease',
     sourceId: '536622304',
     duration: 256,
-  };
+  });
   saveSongLibrary(storage, library);
   assert.deepEqual(loadSongLibrary(storage), library);
+});
+
+void test('removes only the unused starter Lemon song', () => {
+  const emptyLemon = {
+    version: 3,
+    activeSongId: 'lemon-kenshi-yonezu',
+    phoneticCorrections: {},
+    songs: [
+      {
+        id: 'lemon-kenshi-yonezu',
+        title: 'Lemon',
+        artist: '米津玄師',
+        officialUrl: '',
+        mvUrl: '',
+        rawLyrics: '',
+        lines: [],
+        updatedAt: '',
+      },
+    ],
+  };
+  const storage = fakeStorage({
+    [SONG_LIBRARY_STORAGE_KEY]: JSON.stringify(emptyLemon),
+  });
+  assert.deepEqual(loadSongLibrary(storage).songs, []);
 });
 
 void test('migrates saved Lemon lyrics from version 1', () => {
@@ -125,22 +157,32 @@ void test('migrates saved Lemon lyrics from version 1', () => {
 
 void test('falls back safely when saved data is invalid', () => {
   const storage = fakeStorage({ [SONG_LIBRARY_STORAGE_KEY]: '{broken' });
-  assert.equal(loadSongLibrary(storage).songs[0]?.title, 'Lemon');
+  assert.deepEqual(loadSongLibrary(storage).songs, []);
 });
 
 void test('exports and restores the complete local songbook', () => {
   const library = createDefaultLibrary();
   library.phoneticCorrections.きょう = 'Q哟—';
-  library.songs[0]!.lines = [
-    {
-      japanese: '今日',
-      reading: 'きょう',
-      romaji: 'kyou',
-      chinesePhonetic: 'Q哟—',
-      isBreak: false,
-      startTime: 1.2,
-    },
-  ];
+  library.activeSongId = 'song-1';
+  library.songs.push({
+    id: 'song-1',
+    title: '测试歌曲',
+    artist: '歌手',
+    officialUrl: '',
+    mvUrl: '',
+    rawLyrics: '今日',
+    updatedAt: '2026-09-07T00:00:00.000Z',
+    lines: [
+      {
+        japanese: '今日',
+        reading: 'きょう',
+        romaji: 'kyou',
+        chinesePhonetic: 'Q哟—',
+        isBreak: false,
+        startTime: 1.2,
+      },
+    ],
+  });
   const serialized = serializeSongLibraryBackup(
     library,
     '2026-09-07T00:00:00.000Z',
