@@ -2,6 +2,8 @@
 
 import {
   AudioLines,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Download,
   FileUp,
@@ -42,6 +44,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   activeLyricIndexAtTime,
+  adjacentLyricIndex,
   convertLyrics,
   getLinePlaybackRange,
   lyricLinesToRawText,
@@ -88,11 +91,28 @@ type ModelContext = {
 type SongDraft = Pick<SongRecord, 'title' | 'artist' | 'officialUrl' | 'mvUrl'>;
 type GenerationStage = 'lyrics' | 'dictionary' | 'phonetic';
 type ViewMode = 'home' | 'practice';
+type LyricsDisplayMode = 'all' | 'annotation' | 'original';
 type SongChoiceHandler = (
   song: OnlineSongResult,
   language: SongLanguage,
   onProgress: (stage: GenerationStage) => void,
 ) => Promise<void>;
+
+const DISPLAY_MODES: Array<{
+  id: LyricsDisplayMode;
+  label: string;
+  description: string;
+}> = [
+  { id: 'all', label: '三层', description: '原文、注音和音译' },
+  { id: 'annotation', label: '两层', description: '原文和注音' },
+  { id: 'original', label: '原文', description: '只看原文' },
+];
+
+function nextDisplayMode(mode: LyricsDisplayMode): LyricsDisplayMode {
+  if (mode === 'all') return 'annotation';
+  if (mode === 'annotation') return 'original';
+  return 'all';
+}
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024;
 const API_ORIGIN = 'https://uta.dayuzhishui23.cn';
@@ -1836,6 +1856,14 @@ function LyricsReader({
 }) {
   const [isEditingLines, setIsEditingLines] = useState(false);
   const [draftLines, setDraftLines] = useState<LyricLine[]>([]);
+  const [isLinePractice, setIsLinePractice] = useState(false);
+  const [practiceLineIndex, setPracticeLineIndex] = useState<number | null>(
+    null,
+  );
+  const [displayMode, setDisplayMode] = useState<LyricsDisplayMode>('all');
+  const [lineDisplayModes, setLineDisplayModes] = useState<
+    Record<number, LyricsDisplayMode>
+  >({});
   const [regeneratingLine, setRegeneratingLine] = useState<number | null>(null);
   const [isSavingDrafts, setIsSavingDrafts] = useState(false);
   const [isUpdatingPhonetics, setIsUpdatingPhonetics] = useState(false);
@@ -1873,6 +1901,19 @@ function LyricsReader({
   useEffect(() => {
     linesRef.current = lines;
   }, [lines]);
+
+  useEffect(() => {
+    if (!isLinePractice || practiceLineIndex === null) return;
+    const element = document.getElementById(`lyric-line-${practiceLineIndex}`);
+    if (!element) return;
+    const reducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+    element.scrollIntoView({
+      behavior: reducedMotion ? 'auto' : 'smooth',
+      block: 'center',
+    });
+  }, [isLinePractice, practiceLineIndex]);
 
   useEffect(
     () => () => {
@@ -1961,6 +2002,8 @@ function LyricsReader({
 
   function startEditing() {
     setDraftLines(lines.map((line) => ({ ...line })));
+    setIsLinePractice(false);
+    setPracticeLineIndex(null);
     setIsEditingLines(true);
   }
 
@@ -2155,10 +2198,58 @@ function LyricsReader({
     void audio.play();
   }
 
+  const readableLineCount = lines.filter((line) => !line.isBreak).length;
+  const practiceLinePosition =
+    practiceLineIndex === null
+      ? 0
+      : lines.slice(0, practiceLineIndex + 1).filter((line) => !line.isBreak)
+          .length;
+  const previousPracticeLineIndex = adjacentLyricIndex(
+    lines,
+    practiceLineIndex,
+    -1,
+  );
+  const nextPracticeLineIndex = adjacentLyricIndex(lines, practiceLineIndex, 1);
+
+  function toggleLinePractice() {
+    setIsLinePractice((current) => {
+      const next = !current;
+      setPracticeLineIndex(
+        next ? (activeLineIndex ?? adjacentLyricIndex(lines, null, 1)) : null,
+      );
+      return next;
+    });
+  }
+
+  function movePracticeLine(direction: -1 | 1) {
+    const next = adjacentLyricIndex(lines, practiceLineIndex, direction);
+    if (next !== null) setPracticeLineIndex(next);
+  }
+
+  function setWholeDisplayMode(mode: LyricsDisplayMode) {
+    setDisplayMode(mode);
+    setLineDisplayModes({});
+  }
+
+  function cycleLineDisplayMode(index: number) {
+    setLineDisplayModes((current) => ({
+      ...current,
+      [index]: nextDisplayMode(current[index] ?? displayMode),
+    }));
+  }
+
   return (
     <section
       aria-label="对照歌词"
-      className={showAudioSync && audioUrl ? 'pb-52 sm:pb-0' : undefined}
+      className={
+        isLinePractice
+          ? showAudioSync && audioUrl
+            ? 'pb-80 sm:pb-0'
+            : 'pb-28 sm:pb-0'
+          : showAudioSync && audioUrl
+            ? 'pb-52 sm:pb-0'
+            : undefined
+      }
     >
       <SongTitle song={song} />
       {outdatedCount ? (
@@ -2240,10 +2331,47 @@ function LyricsReader({
           </Button>
         ) : null}
       </div>
+      {!isEditingLines ? (
+        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-foreground/10 bg-card/55 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+          <fieldset className="flex min-w-0 items-center gap-2">
+            <legend className="shrink-0 px-1 text-sm font-medium text-foreground/58">
+              整首显示
+            </legend>
+            <div className="grid min-w-0 flex-1 grid-cols-3 rounded-full bg-background/75 p-1 sm:flex-none">
+              {DISPLAY_MODES.map((mode) => (
+                <Button
+                  aria-label={mode.description}
+                  aria-pressed={displayMode === mode.id}
+                  className="h-9 rounded-full px-3 text-sm"
+                  key={mode.id}
+                  onClick={() => setWholeDisplayMode(mode.id)}
+                  size="sm"
+                  title={mode.description}
+                  type="button"
+                  variant={displayMode === mode.id ? 'default' : 'ghost'}
+                >
+                  {mode.label}
+                </Button>
+              ))}
+            </div>
+          </fieldset>
+          <Button
+            aria-pressed={isLinePractice}
+            className="h-11 rounded-full px-5"
+            onClick={toggleLinePractice}
+            type="button"
+            variant={isLinePractice ? 'default' : 'outline'}
+          >
+            {isLinePractice ? '退出逐句练唱' : '逐句练唱'}
+          </Button>
+        </div>
+      ) : null}
       {showAudioSync && !isEditingLines ? (
         <div
           className={`panel-enter rounded-2xl border border-primary/20 bg-card/95 p-4 shadow-[0_20px_70px_rgb(52_69_54/22%)] backdrop-blur sm:mb-4 sm:bg-primary/[0.06] sm:p-5 sm:shadow-none ${
-            audioUrl ? 'fixed inset-x-3 bottom-3 z-40 sm:static' : 'mb-4'
+            audioUrl
+              ? `fixed inset-x-3 z-40 sm:static ${isLinePractice ? 'bottom-24' : 'bottom-3'}`
+              : 'mb-4'
           }`}
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -2322,8 +2450,9 @@ function LyricsReader({
         </div>
       ) : null}
       <div className="overflow-hidden rounded-2xl border border-foreground/10 bg-popover shadow-[0_20px_65px_rgb(52_69_54/9%)]">
-        {visibleLines.map((line, index) =>
-          line.isBreak ? (
+        {visibleLines.map((line, index) => {
+          const lineDisplayMode = lineDisplayModes[index] ?? displayMode;
+          return line.isBreak ? (
             <div
               key={`break-${index}`}
               aria-hidden="true"
@@ -2331,12 +2460,21 @@ function LyricsReader({
             />
           ) : (
             <article
+              aria-current={
+                isLinePractice && practiceLineIndex === index
+                  ? 'true'
+                  : undefined
+              }
               key={index}
               id={`lyric-line-${index}`}
-              className={`border-b border-foreground/[0.07] px-5 py-6 transition-colors duration-300 last:border-b-0 sm:px-8 ${
-                showAudioSync && activeLineIndex === index
-                  ? 'bg-primary/[0.075]'
-                  : ''
+              className={`border-b border-foreground/[0.07] px-5 py-6 transition-[background-color,opacity,transform] duration-300 last:border-b-0 sm:px-8 ${
+                isLinePractice
+                  ? practiceLineIndex === index
+                    ? 'relative z-10 bg-primary/[0.10] opacity-100 shadow-[inset_4px_0_0_var(--primary)]'
+                    : 'opacity-35'
+                  : showAudioSync && activeLineIndex === index
+                    ? 'bg-primary/[0.075]'
+                    : ''
               }`}
             >
               {isEditingLines ? (
@@ -2447,27 +2585,49 @@ function LyricsReader({
                 </div>
               ) : (
                 <>
-                  <p
-                    lang={song.language === 'yue' ? 'zh-HK' : 'ja'}
-                    className="text-[1.35rem] leading-relaxed font-semibold tracking-[0.015em] text-foreground sm:text-[1.6rem]"
-                  >
-                    {line.japanese}
-                  </p>
-                  <p className="mt-2 font-mono text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    {line.romaji}
-                  </p>
-                  <button
-                    className="mt-2 flex w-full items-center gap-2 rounded-lg text-left text-lg leading-relaxed font-medium tracking-[0.02em] text-primary transition-colors hover:bg-primary/[0.05] focus-visible:outline-2 focus-visible:outline-primary sm:text-xl"
-                    onClick={() => startPhoneticEdit(index)}
-                    type="button"
-                  >
-                    <span>{line.chinesePhonetic}</span>
-                    {line.chinesePhoneticEdited ? (
-                      <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs tracking-normal">
-                        已修改
-                      </span>
-                    ) : null}
-                  </button>
+                  <div className="flex items-start gap-3">
+                    <p
+                      lang={song.language === 'yue' ? 'zh-HK' : 'ja'}
+                      className="min-w-0 flex-1 text-[1.35rem] leading-relaxed font-semibold tracking-[0.015em] text-foreground sm:text-[1.6rem]"
+                    >
+                      {line.japanese}
+                    </p>
+                    <Button
+                      aria-label={`切换第 ${index + 1} 句显示方式，当前${DISPLAY_MODES.find((mode) => mode.id === lineDisplayMode)?.label}`}
+                      className="h-8 shrink-0 rounded-full px-2.5 text-xs text-foreground/52"
+                      onClick={() => cycleLineDisplayMode(index)}
+                      size="sm"
+                      title="切换本句显示"
+                      type="button"
+                      variant="ghost"
+                    >
+                      本句·
+                      {
+                        DISPLAY_MODES.find(
+                          (mode) => mode.id === lineDisplayMode,
+                        )?.label
+                      }
+                    </Button>
+                  </div>
+                  {lineDisplayMode !== 'original' ? (
+                    <p className="mt-2 font-mono text-sm leading-relaxed text-muted-foreground sm:text-base">
+                      {line.romaji}
+                    </p>
+                  ) : null}
+                  {lineDisplayMode === 'all' ? (
+                    <button
+                      className="mt-2 flex w-full items-center gap-2 rounded-lg text-left text-lg leading-relaxed font-medium tracking-[0.02em] text-primary transition-colors hover:bg-primary/[0.05] focus-visible:outline-2 focus-visible:outline-primary sm:text-xl"
+                      onClick={() => startPhoneticEdit(index)}
+                      type="button"
+                    >
+                      <span>{line.chinesePhonetic}</span>
+                      {line.chinesePhoneticEdited ? (
+                        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs tracking-normal">
+                          已修改
+                        </span>
+                      ) : null}
+                    </button>
+                  ) : null}
                   {showAudioSync ? (
                     <div className="mt-4 border-t border-foreground/[0.07] pt-4">
                       <Button
@@ -2487,9 +2647,41 @@ function LyricsReader({
                 </>
               )}
             </article>
-          ),
-        )}
+          );
+        })}
       </div>
+      {isLinePractice ? (
+        <nav
+          aria-label="逐句练唱控制"
+          className="fixed inset-x-3 bottom-3 z-50 mx-auto flex max-w-lg items-center gap-2 rounded-2xl border border-primary/20 bg-card/95 p-2 shadow-[0_18px_55px_rgb(52_69_54/28%)] backdrop-blur sm:sticky sm:inset-x-auto sm:bottom-4 sm:mt-4"
+        >
+          <Button
+            aria-label="上一句"
+            className="h-12 flex-1 rounded-xl"
+            disabled={previousPracticeLineIndex === null}
+            onClick={() => movePracticeLine(-1)}
+            type="button"
+            variant="outline"
+          >
+            <ChevronLeft aria-hidden="true" /> 上一句
+          </Button>
+          <p
+            aria-live="polite"
+            className="min-w-16 text-center text-sm font-medium text-foreground/64"
+          >
+            {practiceLinePosition} / {readableLineCount}
+          </p>
+          <Button
+            aria-label="下一句"
+            className="h-12 flex-1 rounded-xl"
+            disabled={nextPracticeLineIndex === null}
+            onClick={() => movePracticeLine(1)}
+            type="button"
+          >
+            下一句 <ChevronRight aria-hidden="true" />
+          </Button>
+        </nav>
+      ) : null}
       <Dialog
         onOpenChange={(open) => {
           if (!open) setCandidateLineIndex(null);
