@@ -107,6 +107,18 @@
   }
 }
 
+@keyframes ascii-breathe {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: scale(0.985);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+}
+
 .song-view-enter {
   animation: song-view-in 220ms ease-out both;
 }
@@ -115,13 +127,19 @@
   animation: panel-in 180ms ease-out both;
 }
 
+.search-ascii-art {
+  animation: ascii-breathe 1.5s ease-in-out infinite;
+  transform-origin: top center;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
 
   .song-view-enter,
-  .panel-enter {
+  .panel-enter,
+  .search-ascii-art {
     animation: none;
   }
 }

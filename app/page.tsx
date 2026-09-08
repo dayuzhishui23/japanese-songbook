@@ -54,6 +54,7 @@ import {
   type LyricCopyTrack,
 } from '@/lib/lyrics';
 import { normalizeReadingKey, readingToChinese } from '@/lib/phonetic';
+import { SEARCH_ASCII_ART } from '@/lib/search-ascii';
 import type { OnlineSongResult, TimedLyricLine } from '@/lib/online-music';
 import {
   createDefaultLibrary,
@@ -1180,6 +1181,7 @@ function OnlineSongSearchDialog({
                 <span className="hidden sm:inline">搜索</span>
               </Button>
             </form>
+            {isSearching ? <SearchAsciiLoader /> : null}
             {searchError ? (
               <p className="mt-3 text-sm text-rose-700" role="alert">
                 {searchError}
@@ -1309,6 +1311,7 @@ function OnlineSongSearchDialog({
                 搜索
               </Button>
             </form>
+            {isSearching ? <SearchAsciiLoader /> : null}
             {searchError ? (
               <p className="mt-3 text-sm text-rose-700" role="alert">
                 {searchError}
@@ -1366,6 +1369,28 @@ function OnlineSongSearchDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SearchAsciiLoader() {
+  return (
+    <output
+      aria-live="polite"
+      className="mt-4 block overflow-hidden rounded-xl border border-foreground/10 bg-background/55 px-3 py-4 text-center"
+    >
+      <div className="flex items-center justify-center gap-2 text-sm text-foreground/55">
+        <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+        搜索中…
+      </div>
+      <div className="mt-2 max-h-44 overflow-hidden sm:max-h-56">
+        <pre
+          aria-hidden="true"
+          className="search-ascii-art mx-auto w-max max-w-none select-none font-mono text-[3px] leading-[0.78] text-foreground/80 sm:text-[4px]"
+        >
+          {SEARCH_ASCII_ART}
+        </pre>
+      </div>
+    </output>
   );
 }
 
