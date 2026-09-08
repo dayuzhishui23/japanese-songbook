@@ -54,10 +54,6 @@ import {
   type LyricCopyTrack,
 } from '@/lib/lyrics';
 import { normalizeReadingKey, readingToChinese } from '@/lib/phonetic';
-import {
-  SEARCH_ASCII_FRAME_DELAY_MS,
-  SEARCH_ASCII_FRAMES,
-} from '@/lib/search-ascii-frames';
 import type { OnlineSongResult, TimedLyricLine } from '@/lib/online-music';
 import {
   createDefaultLibrary,
@@ -1184,7 +1180,6 @@ function OnlineSongSearchDialog({
                 <span className="hidden sm:inline">搜索</span>
               </Button>
             </form>
-            {isSearching ? <SearchAsciiLoader /> : null}
             {searchError ? (
               <p className="mt-3 text-sm text-rose-700" role="alert">
                 {searchError}
@@ -1314,7 +1309,6 @@ function OnlineSongSearchDialog({
                 搜索
               </Button>
             </form>
-            {isSearching ? <SearchAsciiLoader /> : null}
             {searchError ? (
               <p className="mt-3 text-sm text-rose-700" role="alert">
                 {searchError}
@@ -1372,52 +1366,6 @@ function OnlineSongSearchDialog({
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function SearchAsciiLoader() {
-  const frameRef = useRef<HTMLPreElement>(null);
-
-  useEffect(() => {
-    const frameElement = frameRef.current;
-    if (!frameElement) return;
-
-    let frameIndex = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const reduceMotion = window.matchMedia(
-      '(prefers-reduced-motion: reduce)',
-    ).matches;
-
-    const showNextFrame = () => {
-      frameElement.textContent = SEARCH_ASCII_FRAMES[frameIndex];
-      if (reduceMotion) return;
-      frameIndex = (frameIndex + 1) % SEARCH_ASCII_FRAMES.length;
-      timer = setTimeout(showNextFrame, SEARCH_ASCII_FRAME_DELAY_MS);
-    };
-
-    showNextFrame();
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, []);
-
-  return (
-    <output
-      aria-live="polite"
-      className="mt-4 block overflow-hidden rounded-xl border border-foreground/10 bg-background/55 px-3 py-4 text-center"
-    >
-      <div className="flex items-center justify-center gap-2 text-sm text-foreground/55">
-        <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
-        搜索中…
-      </div>
-      <div className="mt-2 max-h-56 overflow-hidden sm:max-h-80">
-        <pre
-          aria-hidden="true"
-          className="mx-auto w-max max-w-none select-none font-mono text-[4px] font-bold leading-none tracking-[0.35px] text-foreground/90 sm:text-[6px]"
-          ref={frameRef}
-        />
-      </div>
-    </output>
   );
 }
 
