@@ -1876,6 +1876,7 @@ function LyricsReader({
   const [isUpdatingPhonetics, setIsUpdatingPhonetics] = useState(false);
   const [lineError, setLineError] = useState('');
   const [showAudioSync, setShowAudioSync] = useState(Boolean(song.sourceId));
+  const [isTimingCalibration, setIsTimingCalibration] = useState(false);
   const [audioError, setAudioError] = useState(false);
   const [audioRetryStopped, setAudioRetryStopped] = useState(false);
   const [audioAttempt, setAudioAttempt] = useState(0);
@@ -2011,6 +2012,7 @@ function LyricsReader({
     setDraftLines(lines.map((line) => ({ ...line })));
     setIsLinePractice(false);
     setPracticeLineIndex(null);
+    setIsTimingCalibration(false);
     setIsEditingLines(true);
   }
 
@@ -2213,13 +2215,10 @@ function LyricsReader({
     if (isLinePractice) setPracticeLineIndex(index);
   }
 
-  function setCurrentAudioTimeAsLineStart(index: number) {
-    const audio = audioRef.current;
-    if (!audio || !Number.isFinite(audio.currentTime)) return;
-    updateLineStartTime(index, audio.currentTime);
-  }
-
   const readableLineCount = lines.filter((line) => !line.isBreak).length;
+  const hasTimedLines = lines.some(
+    (line) => !line.isBreak && typeof line.startTime === 'number',
+  );
   const practiceLinePosition =
     practiceLineIndex === null
       ? 0
@@ -2342,14 +2341,33 @@ function LyricsReader({
           </>
         )}
         {!isEditingLines ? (
-          <Button
-            className="h-11 rounded-full px-4"
-            onClick={() => setShowAudioSync((current) => !current)}
-            type="button"
-            variant={showAudioSync ? 'default' : 'outline'}
-          >
-            <AudioLines aria-hidden="true" /> 对音源
-          </Button>
+          <>
+            <Button
+              className="h-11 rounded-full px-4"
+              onClick={() =>
+                setShowAudioSync((current) => {
+                  const next = !current;
+                  if (!next) setIsTimingCalibration(false);
+                  return next;
+                })
+              }
+              type="button"
+              variant={showAudioSync ? 'default' : 'outline'}
+            >
+              <AudioLines aria-hidden="true" /> 对音源
+            </Button>
+            {showAudioSync && hasTimedLines ? (
+              <Button
+                aria-pressed={isTimingCalibration}
+                className="h-11 rounded-full px-4"
+                onClick={() => setIsTimingCalibration((current) => !current)}
+                type="button"
+                variant={isTimingCalibration ? 'default' : 'ghost'}
+              >
+                {isTimingCalibration ? '完成校准' : '校准时间'}
+              </Button>
+            ) : null}
+          </>
         ) : null}
       </div>
       {!isEditingLines ? (
@@ -2655,11 +2673,6 @@ function LyricsReader({
                   {showAudioSync ? (
                     <div className="mt-4 border-t border-foreground/[0.07] pt-4">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="mr-1 rounded-full bg-primary/[0.07] px-3 py-2 font-mono text-xs text-foreground/58">
-                          {typeof line.startTime === 'number'
-                            ? formatLyricTime(line.startTime)
-                            : '--:--.-'}
-                        </span>
                         <Button
                           className="h-10 rounded-full"
                           disabled={
@@ -2672,43 +2685,47 @@ function LyricsReader({
                         >
                           <Play aria-hidden="true" /> 播放本句
                         </Button>
-                        <Button
-                          aria-label={`第 ${index + 1} 句提前 0.5 秒`}
-                          className="h-10 rounded-full"
-                          disabled={typeof line.startTime !== 'number'}
-                          onClick={() =>
-                            updateLineStartTime(index, line.startTime! - 0.5)
-                          }
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          提前 0.5 秒
-                        </Button>
-                        <Button
-                          aria-label={`第 ${index + 1} 句推迟 0.5 秒`}
-                          className="h-10 rounded-full"
-                          disabled={typeof line.startTime !== 'number'}
-                          onClick={() =>
-                            updateLineStartTime(index, line.startTime! + 0.5)
-                          }
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          推迟 0.5 秒
-                        </Button>
-                        <Button
-                          aria-label={`把当前播放时间设为第 ${index + 1} 句开始`}
-                          className="h-10 rounded-full"
-                          disabled={!audioUrl}
-                          onClick={() => setCurrentAudioTimeAsLineStart(index)}
-                          size="sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          当前时间设为本句
-                        </Button>
+                        {isTimingCalibration ? (
+                          <>
+                            <span className="rounded-full bg-primary/[0.07] px-3 py-2 font-mono text-xs text-foreground/58">
+                              {typeof line.startTime === 'number'
+                                ? formatLyricTime(line.startTime)
+                                : '--:--.-'}
+                            </span>
+                            <Button
+                              aria-label={`第 ${index + 1} 句提前 0.5 秒`}
+                              className="h-10 rounded-full"
+                              disabled={typeof line.startTime !== 'number'}
+                              onClick={() =>
+                                updateLineStartTime(
+                                  index,
+                                  line.startTime! - 0.5,
+                                )
+                              }
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              提前 0.5 秒
+                            </Button>
+                            <Button
+                              aria-label={`第 ${index + 1} 句推迟 0.5 秒`}
+                              className="h-10 rounded-full"
+                              disabled={typeof line.startTime !== 'number'}
+                              onClick={() =>
+                                updateLineStartTime(
+                                  index,
+                                  line.startTime! + 0.5,
+                                )
+                              }
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              推迟 0.5 秒
+                            </Button>
+                          </>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}
