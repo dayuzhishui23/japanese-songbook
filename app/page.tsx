@@ -88,17 +88,16 @@ type SongChoiceHandler = (
 ) => Promise<void>;
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024;
-const SITES_ORIGIN = 'https://lemon-lyrics-practice.dayuzhishui23.chatgpt.site';
+const API_ORIGIN = 'https://uta.dayuzhishui23.cn';
 const HOME_ASCII_ART =
   '  _  _              _       _           \n | || |    ___     | |     | |     ___  \n | __ |   / -_)    | |     | |    / _ \\ \n |_||_|   \\___|   _|_|_   _|_|_   \\___/ \n_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|\n"`-0-0-\'"`-0-0-\'"`-0-0-\'"`-0-0-\'"`-0-0-\'';
 
 function apiUrl(path: string): string {
   if (
     typeof window !== 'undefined' &&
-    (window.location.hostname.endsWith('.github.io') ||
-      window.location.hostname === 'uta.dayuzhishui23.cn')
+    window.location.hostname.endsWith('.github.io')
   ) {
-    return `${SITES_ORIGIN}${path}`;
+    return `${API_ORIGIN}${path}`;
   }
   return path;
 }

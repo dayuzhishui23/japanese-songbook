@@ -67,6 +67,7 @@ export async function GET(request: Request) {
   }
 
   try {
+    const rankedQuery = searchQueries(query)[0] ?? query;
     const endpoints = ['search/get', 'search/get/web'];
     let data: {
       result?: {
@@ -108,7 +109,8 @@ export async function GET(request: Request) {
             .filter(Boolean)
             .join(' / ') || '未知歌手',
         ),
-      }));
+      }))
+      .filter((song) => matchScore(song, rankedQuery) > 20);
     if (!songs.length) {
       try {
         const fallback = await fetch(
@@ -166,7 +168,6 @@ export async function GET(request: Request) {
     if (knownSong) {
       songs = [knownSong, ...songs.filter((song) => song.id !== knownSong.id)];
     }
-    const rankedQuery = searchQueries(query)[0] ?? query;
     const rankedSongs = [
       ...new Map(songs.map((song) => [song.id, song])).values(),
     ]
