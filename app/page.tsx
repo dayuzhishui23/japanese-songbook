@@ -54,7 +54,10 @@ import {
   type LyricCopyTrack,
 } from '@/lib/lyrics';
 import { normalizeReadingKey, readingToChinese } from '@/lib/phonetic';
-import { SEARCH_ASCII_ART } from '@/lib/search-ascii';
+import {
+  SEARCH_ASCII_FRAME_DELAY_MS,
+  SEARCH_ASCII_FRAMES,
+} from '@/lib/search-ascii-frames';
 import type { OnlineSongResult, TimedLyricLine } from '@/lib/online-music';
 import {
   createDefaultLibrary,
@@ -1373,6 +1376,31 @@ function OnlineSongSearchDialog({
 }
 
 function SearchAsciiLoader() {
+  const frameRef = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    const frameElement = frameRef.current;
+    if (!frameElement) return;
+
+    let frameIndex = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const reduceMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+
+    const showNextFrame = () => {
+      frameElement.textContent = SEARCH_ASCII_FRAMES[frameIndex];
+      if (reduceMotion) return;
+      frameIndex = (frameIndex + 1) % SEARCH_ASCII_FRAMES.length;
+      timer = setTimeout(showNextFrame, SEARCH_ASCII_FRAME_DELAY_MS);
+    };
+
+    showNextFrame();
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
   return (
     <output
       aria-live="polite"
@@ -1382,13 +1410,12 @@ function SearchAsciiLoader() {
         <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
         搜索中…
       </div>
-      <div className="mt-2 max-h-44 overflow-hidden sm:max-h-56">
+      <div className="mt-2 max-h-56 overflow-hidden sm:max-h-80">
         <pre
           aria-hidden="true"
-          className="search-ascii-art mx-auto w-max max-w-none select-none font-mono text-[3px] leading-[0.78] text-foreground/80 sm:text-[4px]"
-        >
-          {SEARCH_ASCII_ART}
-        </pre>
+          className="mx-auto w-max max-w-none select-none font-mono text-[4px] font-bold leading-none tracking-[0.35px] text-foreground/90 sm:text-[6px]"
+          ref={frameRef}
+        />
       </div>
     </output>
   );
