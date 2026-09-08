@@ -166,18 +166,21 @@ export async function GET(request: Request) {
     if (knownSong) {
       songs = [knownSong, ...songs.filter((song) => song.id !== knownSong.id)];
     }
+    const rankedQuery = searchQueries(query)[0] ?? query;
     const rankedSongs = [
       ...new Map(songs.map((song) => [song.id, song])).values(),
-    ].sort((a, b) => {
-      if (knownSong) {
-        if (a.id === knownSong.id) return -1;
-        if (b.id === knownSong.id) return 1;
-      }
-      return (
-        matchScore(b, searchQueries(query)[0]) -
-        matchScore(a, searchQueries(query)[0])
-      );
-    });
+    ]
+      .filter(
+        (song) =>
+          song.id === knownSong?.id || matchScore(song, rankedQuery) > 20,
+      )
+      .sort((a, b) => {
+        if (knownSong) {
+          if (a.id === knownSong.id) return -1;
+          if (b.id === knownSong.id) return 1;
+        }
+        return matchScore(b, rankedQuery) - matchScore(a, rankedQuery);
+      });
     return Response.json({ songs: rankedSongs }, { headers: cors(request) });
   } catch {
     return Response.json(
