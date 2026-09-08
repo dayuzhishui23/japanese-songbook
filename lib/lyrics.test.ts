@@ -15,8 +15,8 @@ import {
 } from './lyrics';
 
 void test('rejects empty and whitespace-only lyrics', () => {
-  assert.throws(() => validateLyricsInput(''), /请先粘贴日语歌词/u);
-  assert.throws(() => validateLyricsInput('   \n'), /请先粘贴日语歌词/u);
+  assert.throws(() => validateLyricsInput(''), /请先粘贴歌词/u);
+  assert.throws(() => validateLyricsInput('   \n'), /请先粘贴歌词/u);
 });
 
 void test('rejects overlong lyrics', () => {

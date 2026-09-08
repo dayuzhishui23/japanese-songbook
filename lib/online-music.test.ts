@@ -21,6 +21,13 @@ void test('drops metadata and production credits', () => {
   );
 });
 
+void test('drops English production credits from lyric results', () => {
+  const parsed = parseTimedLrc(
+    '[00:01.00]Produced by Someone\n[00:02.00]Guitar: Player\n[00:03.00]真正歌词',
+  );
+  assert.deepEqual(parsed, [{ text: '真正歌词', startTime: 3 }]);
+});
+
 void test('builds converter input without embedding timestamps', () => {
   assert.equal(
     timedLyricsToText([

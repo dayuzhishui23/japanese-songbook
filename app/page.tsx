@@ -52,7 +52,13 @@ import {
   regenerateLyricLine,
   type LyricLine,
   type LyricCopyTrack,
+  type SongLanguage,
 } from '@/lib/lyrics';
+import {
+  getCantoneseCandidates,
+  jyutpingToChinese,
+  type CantoneseCandidate,
+} from '@/lib/cantonese';
 import { normalizeReadingKey, readingToChinese } from '@/lib/phonetic';
 import type { OnlineSongResult, TimedLyricLine } from '@/lib/online-music';
 import {
@@ -84,6 +90,7 @@ type GenerationStage = 'lyrics' | 'dictionary' | 'phonetic';
 type ViewMode = 'home' | 'practice';
 type SongChoiceHandler = (
   song: OnlineSongResult,
+  language: SongLanguage,
   onProgress: (stage: GenerationStage) => void,
 ) => Promise<void>;
 
@@ -105,6 +112,15 @@ function apiUrl(path: string): string {
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   return '暂时无法生成读音，请稍后重试。你的原歌词仍然保留着。';
+}
+
+function detectLyricsLanguage(
+  lyrics: string,
+  selected: SongLanguage,
+): SongLanguage {
+  if (/[\u3040-\u30ff]/u.test(lyrics)) return 'ja';
+  if (/[嘅咗佢唔喺冇哋啲噉嚟俾喎㗎]/u.test(lyrics)) return 'yue';
+  return selected;
 }
 
 function createSongId(): string {
@@ -153,6 +169,8 @@ export default function Home() {
       const converted = await convertLyrics(
         lyrics,
         library.phoneticCorrections,
+        activeSong.language,
+        library.cantonesePronunciationCorrections,
       );
       const normalized = lyrics.replace(/\r\n?/gu, '\n');
       const next: SongLibrary = {
@@ -190,7 +208,7 @@ export default function Home() {
         name: 'generate_lyrics_view',
         title: '为当前歌曲生成对照歌词',
         description:
-          '把用户提供的日语歌词转换为日语、罗马音和中文跟唱近似音，并保存到当前选中的歌曲。',
+          '把用户提供的日语或粤语歌词转换为罗马音或粤拼及中文跟唱近似音，并保存到当前歌曲。',
         inputSchema: {
           type: 'object',
           properties: {
@@ -198,7 +216,7 @@ export default function Home() {
               type: 'string',
               minLength: 1,
               maxLength: MAX_LYRICS_LENGTH,
-              description: '用户合法取得并提供的日语歌词，每行一句。',
+              description: '用户合法取得并提供的歌词，每行一句。',
             },
           },
           required: ['lyrics'],
@@ -240,6 +258,7 @@ export default function Home() {
 
   async function addOnlineSong(
     result: OnlineSongResult,
+    language: SongLanguage,
     onProgress: (stage: GenerationStage) => void,
   ) {
     setIsGenerating(true);
@@ -255,12 +274,15 @@ export default function Home() {
       if (!response.ok || !payload.lyrics || !payload.timedLines?.length) {
         throw new Error(payload.error || '这首歌暂时没有可用歌词。');
       }
+      const resolvedLanguage = detectLyricsLanguage(payload.lyrics, language);
       onProgress('dictionary');
-      await prepareLyricsConverter();
+      await prepareLyricsConverter(resolvedLanguage);
       onProgress('phonetic');
       const converted = await convertLyrics(
         payload.lyrics,
         library.phoneticCorrections,
+        resolvedLanguage,
+        library.cantonesePronunciationCorrections,
       );
       const lines = converted.map((line, index) => ({
         ...line,
@@ -288,6 +310,7 @@ export default function Home() {
         source: 'netease',
         sourceId: result.id,
         duration: result.duration,
+        language: resolvedLanguage,
       };
       const songs = existing
         ? library.songs.map((current) =>
@@ -311,6 +334,7 @@ export default function Home() {
     suggestedTitle: string,
     suggestedArtist = '未知歌手',
     lyrics = '',
+    language: SongLanguage = 'ja',
   ) {
     const song: SongRecord = {
       id: createSongId(),
@@ -321,6 +345,7 @@ export default function Home() {
       rawLyrics: lyrics,
       lines: [],
       updatedAt: '',
+      language,
     };
     persist({
       ...library,
@@ -356,10 +381,12 @@ export default function Home() {
     const songs = library.songs.filter((song) => song.id !== activeSong.id);
     const nextActive = songs[0] ?? null;
     persist({
-      version: 3,
+      version: 4,
       activeSongId: nextActive?.id ?? '',
       songs,
       phoneticCorrections: library.phoneticCorrections,
+      cantonesePronunciationCorrections:
+        library.cantonesePronunciationCorrections,
     });
     setRawLyrics(nextActive?.rawLyrics ?? '');
     setIsEditing(!nextActive?.lines.length);
@@ -441,6 +468,19 @@ export default function Home() {
     const nextCorrections = { ...library.phoneticCorrections };
     delete nextCorrections[reading];
     persist({ ...library, phoneticCorrections: nextCorrections });
+  }
+
+  function saveCantonesePronunciationCorrection(text: string, reading: string) {
+    const normalizedText = text.trim();
+    const normalizedReading = reading.toLowerCase().trim();
+    if (!normalizedText || !normalizedReading) return;
+    persist({
+      ...library,
+      cantonesePronunciationCorrections: {
+        ...library.cantonesePronunciationCorrections,
+        [normalizedText]: normalizedReading,
+      },
+    });
   }
 
   function importLibrary(imported: SongLibrary) {
@@ -529,6 +569,7 @@ export default function Home() {
                   <LyricsEditor
                     error={error}
                     isGenerating={isGenerating}
+                    language={activeSong.language}
                     onLyricsChange={setRawLyrics}
                     onSubmit={handleSubmit}
                     rawLyrics={rawLyrics}
@@ -537,12 +578,18 @@ export default function Home() {
                 </>
               ) : (
                 <LyricsReader
+                  cantoneseCorrections={
+                    library.cantonesePronunciationCorrections
+                  }
                   corrections={library.phoneticCorrections}
                   lines={activeSong.lines}
                   onDeleteCorrection={deletePhoneticCorrection}
                   onEdit={() => setIsEditing(true)}
                   onSave={saveEditedLines}
                   onSaveCorrection={savePhoneticCorrection}
+                  onSaveCantoneseCorrection={
+                    saveCantonesePronunciationCorrection
+                  }
                   onSaveWithCorrections={saveLinesAndCorrections}
                   song={activeSong}
                 />
@@ -572,7 +619,12 @@ function StartScreen({
 }: {
   activeSongId: string;
   onChoose: SongChoiceHandler;
-  onManual: (title: string, artist?: string, lyrics?: string) => void;
+  onManual: (
+    title: string,
+    artist?: string,
+    lyrics?: string,
+    language?: SongLanguage,
+  ) => void;
   onSelect: (song: SongRecord) => void;
   songs: SongRecord[];
 }) {
@@ -618,9 +670,18 @@ function StartScreen({
 }
 
 function PasteSongStarter({
+  language,
+  onLanguageChange,
   onManual,
 }: {
-  onManual: (title: string, artist?: string, lyrics?: string) => void;
+  language: SongLanguage;
+  onLanguageChange: (language: SongLanguage) => void;
+  onManual: (
+    title: string,
+    artist?: string,
+    lyrics?: string,
+    language?: SongLanguage,
+  ) => void;
 }) {
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
@@ -628,11 +689,12 @@ function PasteSongStarter({
 
   function submit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
-    onManual(title, artist, lyrics);
+    onManual(title, artist, lyrics, language);
   }
 
   return (
     <form onSubmit={submit}>
+      <LanguagePicker language={language} onChange={onLanguageChange} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Input
           className="h-11 bg-background text-base"
@@ -651,7 +713,7 @@ function PasteSongStarter({
         className="mt-3 min-h-40 resize-y bg-background p-4 text-base leading-7"
         maxLength={MAX_LYRICS_LENGTH}
         onChange={(event) => setLyrics(event.target.value)}
-        placeholder="粘贴日语歌词，每行一句…"
+        placeholder={`粘贴${language === 'yue' ? '粤语' : '日语'}歌词，每行一句…`}
         required
         value={lyrics}
       />
@@ -661,6 +723,40 @@ function PasteSongStarter({
         </Button>
       </div>
     </form>
+  );
+}
+
+function LanguagePicker({
+  language,
+  onChange,
+}: {
+  language: SongLanguage;
+  onChange: (language: SongLanguage) => void;
+}) {
+  return (
+    <fieldset className="mb-4 flex w-fit rounded-full bg-foreground/[0.06] p-1">
+      <legend className="sr-only">歌词语言</legend>
+      {(
+        [
+          ['ja', '日语'],
+          ['yue', '粤语'],
+        ] as const
+      ).map(([value, label]) => (
+        <button
+          key={value}
+          aria-pressed={language === value}
+          className={`min-h-10 rounded-full px-5 text-sm font-medium transition-colors ${
+            language === value
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-foreground/60 hover:text-foreground'
+          }`}
+          onClick={() => onChange(value)}
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </fieldset>
   );
 }
 
@@ -736,9 +832,14 @@ function SongTitle({ song }: { song: SongRecord }) {
       <h2 className="truncate text-2xl font-semibold tracking-[-0.025em] text-foreground sm:text-3xl">
         {song.title}
       </h2>
-      <p className="mt-1 truncate text-sm text-foreground/52 sm:text-base">
-        {song.artist}
-      </p>
+      <div className="mt-1 flex items-center gap-2">
+        <p className="truncate text-sm text-foreground/52 sm:text-base">
+          {song.artist}
+        </p>
+        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+          {song.language === 'yue' ? '粤语' : '日语'}
+        </span>
+      </div>
     </section>
   );
 }
@@ -1072,7 +1173,12 @@ function OnlineSongSearchDialog({
   prominent = false,
 }: {
   onChoose: SongChoiceHandler;
-  onManual: (suggestedTitle: string, artist?: string, lyrics?: string) => void;
+  onManual: (
+    suggestedTitle: string,
+    artist?: string,
+    lyrics?: string,
+    language?: SongLanguage,
+  ) => void;
   prominent?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -1085,6 +1191,7 @@ function OnlineSongSearchDialog({
   const [searchError, setSearchError] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
   const [manualMode, setManualMode] = useState(false);
+  const [language, setLanguage] = useState<SongLanguage>('ja');
 
   async function searchSongs(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1120,7 +1227,7 @@ function OnlineSongSearchDialog({
     setGenerationStage('lyrics');
     setSearchError('');
     try {
-      await onChoose(song, setGenerationStage);
+      await onChoose(song, language, setGenerationStage);
       setOpen(false);
       setQuery('');
       setResults([]);
@@ -1153,10 +1260,15 @@ function OnlineSongSearchDialog({
                 返回搜索
               </Button>
             </div>
-            <PasteSongStarter onManual={onManual} />
+            <PasteSongStarter
+              language={language}
+              onLanguageChange={setLanguage}
+              onManual={onManual}
+            />
           </>
         ) : (
           <>
+            <LanguagePicker language={language} onChange={setLanguage} />
             <form className="flex gap-2" onSubmit={searchSongs}>
               <Input
                 aria-label="输入歌名或歌手"
@@ -1170,6 +1282,7 @@ function OnlineSongSearchDialog({
                 value={query}
               />
               <Button
+                aria-label="搜索"
                 className="h-14 shrink-0 rounded-full px-5"
                 disabled={isSearching || Boolean(loadingSongId)}
                 type="submit"
@@ -1188,7 +1301,7 @@ function OnlineSongSearchDialog({
               </p>
             ) : null}
             {generationStage ? (
-              <GenerationProgress stage={generationStage} />
+              <GenerationProgress language={language} stage={generationStage} />
             ) : null}
             {results.length ? (
               <div className="mt-4 space-y-2">
@@ -1264,15 +1377,17 @@ function OnlineSongSearchDialog({
           </DialogTitle>
           <DialogDescription>
             {manualMode
-              ? '输入歌曲资料并粘贴日语歌词。'
+              ? `输入歌曲资料并粘贴${language === 'yue' ? '粤语' : '日语'}歌词。`
               : '输入歌名或歌手，选择后自动生成学唱歌词。'}
           </DialogDescription>
         </DialogHeader>
         {manualMode ? (
           <>
             <PasteSongStarter
-              onManual={(title, artist, lyrics) => {
-                onManual(title, artist, lyrics);
+              language={language}
+              onLanguageChange={setLanguage}
+              onManual={(title, artist, lyrics, selectedLanguage) => {
+                onManual(title, artist, lyrics, selectedLanguage);
                 setOpen(false);
               }}
             />
@@ -1287,6 +1402,7 @@ function OnlineSongSearchDialog({
           </>
         ) : (
           <>
+            <LanguagePicker language={language} onChange={setLanguage} />
             <form className="mt-5 flex gap-2" onSubmit={searchSongs}>
               <Input
                 className="h-12 min-w-0 bg-background text-base"
@@ -1295,10 +1411,15 @@ function OnlineSongSearchDialog({
                   setQuery(event.target.value);
                   setHasSearched(false);
                 }}
-                placeholder="例如：Lemon 米津玄師"
+                placeholder={
+                  language === 'yue'
+                    ? '例如：富士山下 陈奕迅'
+                    : '例如：歌名＋歌手'
+                }
                 value={query}
               />
               <Button
+                aria-label="搜索"
                 className="h-12 shrink-0 rounded-full px-5"
                 disabled={isSearching || Boolean(loadingSongId)}
                 type="submit"
@@ -1317,7 +1438,7 @@ function OnlineSongSearchDialog({
               </p>
             ) : null}
             {generationStage ? (
-              <GenerationProgress stage={generationStage} />
+              <GenerationProgress language={language} stage={generationStage} />
             ) : null}
             {results.length ? (
               <div className="mt-4 max-h-[50vh] space-y-2 overflow-y-auto">
@@ -1371,10 +1492,19 @@ function OnlineSongSearchDialog({
   );
 }
 
-function GenerationProgress({ stage }: { stage: GenerationStage }) {
+function GenerationProgress({
+  language,
+  stage,
+}: {
+  language: SongLanguage;
+  stage: GenerationStage;
+}) {
   const stages: Array<{ id: GenerationStage; label: string }> = [
     { id: 'lyrics', label: '获取歌词' },
-    { id: 'dictionary', label: '加载日语词典' },
+    {
+      id: 'dictionary',
+      label: language === 'yue' ? '加载粤拼词典' : '加载日语词典',
+    },
     { id: 'phonetic', label: '生成音译' },
   ];
   const activeIndex = stages.findIndex((item) => item.id === stage);
@@ -1402,19 +1532,25 @@ function GenerationProgress({ stage }: { stage: GenerationStage }) {
 
 function PhoneticDictionaryDialog({
   corrections,
+  language,
   onDelete,
   onSave,
 }: {
   corrections: Record<string, string>;
+  language: SongLanguage;
   onDelete: (reading: string) => void;
   onSave: (reading: string, chinesePhonetic: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [reading, setReading] = useState('');
   const [chinesePhonetic, setChinesePhonetic] = useState('');
-  const entries = Object.entries(corrections).sort(([a], [b]) =>
-    a.localeCompare(b, 'ja'),
-  );
+  const entries = Object.entries(corrections)
+    .filter(([savedReading]) =>
+      language === 'yue'
+        ? /[a-z]+[1-6]/iu.test(savedReading)
+        : /[\u3040-\u30ff]/u.test(savedReading),
+    )
+    .sort(([a], [b]) => a.localeCompare(b, language === 'yue' ? 'en' : 'ja'));
 
   function submit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1442,12 +1578,14 @@ function PhoneticDictionaryDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <FormField label="平假名读音">
+            <FormField label={language === 'yue' ? '粤拼读音' : '平假名读音'}>
               <Input
                 className="h-11 bg-background text-base"
-                lang="ja"
+                lang={language === 'yue' ? 'yue-Latn' : 'ja'}
                 onChange={(event) => setReading(event.target.value)}
-                placeholder="例如：きょう"
+                placeholder={
+                  language === 'yue' ? '例如：zung1' : '例如：きょう'
+                }
                 value={reading}
               />
             </FormField>
@@ -1473,7 +1611,10 @@ function PhoneticDictionaryDialog({
                   className="flex items-center gap-3 rounded-xl bg-background px-3 py-2"
                 >
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground/72">
-                    <span lang="ja">{savedReading}</span> → {savedPhonetic}
+                    <span lang={language === 'yue' ? 'yue-Latn' : 'ja'}>
+                      {savedReading}
+                    </span>{' '}
+                    → {savedPhonetic}
                   </span>
                   <Button
                     className="h-8 rounded-full"
@@ -1497,6 +1638,7 @@ function PhoneticDictionaryDialog({
 function LyricsEditor({
   error,
   isGenerating,
+  language,
   onLyricsChange,
   onSubmit,
   rawLyrics,
@@ -1504,6 +1646,7 @@ function LyricsEditor({
 }: {
   error: string;
   isGenerating: boolean;
+  language: SongLanguage;
   onLyricsChange: (value: string) => void;
   onSubmit: (event: { preventDefault(): void }) => void;
   rawLyrics: string;
@@ -1519,10 +1662,10 @@ function LyricsEditor({
           id="lyrics-input-title"
           className="mb-4 text-xl font-semibold text-foreground"
         >
-          日语歌词
+          {language === 'yue' ? '粤语歌词' : '日语歌词'}
         </h2>
         <label className="sr-only" htmlFor="lyrics-input">
-          《{songTitle}》日语歌词
+          《{songTitle}》{language === 'yue' ? '粤语' : '日语'}歌词
         </label>
         <Textarea
           id="lyrics-input"
@@ -1566,7 +1709,13 @@ function LyricsEditor({
   );
 }
 
-function CopyLyricsDialog({ lines }: { lines: LyricLine[] }) {
+function CopyLyricsDialog({
+  language,
+  lines,
+}: {
+  language: SongLanguage;
+  lines: LyricLine[];
+}) {
   const [open, setOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
   const [selected, setSelected] = useState<Record<LyricCopyTrack, boolean>>({
@@ -1576,8 +1725,8 @@ function CopyLyricsDialog({ lines }: { lines: LyricLine[] }) {
   });
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const options: Array<{ track: LyricCopyTrack; label: string }> = [
-    { track: 'japanese', label: '日语' },
-    { track: 'romaji', label: '罗马音' },
+    { track: 'japanese', label: language === 'yue' ? '粤语歌词' : '日语' },
+    { track: 'romaji', label: language === 'yue' ? '粤拼' : '罗马音' },
     { track: 'chinesePhonetic', label: '中文音译' },
   ];
   const selectedTracks = options
@@ -1660,21 +1809,25 @@ function CopyLyricsDialog({ lines }: { lines: LyricLine[] }) {
 }
 
 function LyricsReader({
+  cantoneseCorrections,
   corrections,
   lines,
   onDeleteCorrection,
   onEdit,
   onSave,
   onSaveCorrection,
+  onSaveCantoneseCorrection,
   onSaveWithCorrections,
   song,
 }: {
+  cantoneseCorrections: Record<string, string>;
   corrections: Record<string, string>;
   lines: LyricLine[];
   onDeleteCorrection: (reading: string) => void;
   onEdit: () => void;
   onSave: (lines: LyricLine[]) => void;
   onSaveCorrection: (reading: string, chinesePhonetic: string) => void;
+  onSaveCantoneseCorrection: (text: string, reading: string) => void;
   onSaveWithCorrections: (
     lines: LyricLine[],
     corrections: Record<string, string>,
@@ -1698,6 +1851,13 @@ function LyricsReader({
     number | null
   >(null);
   const [phoneticDraft, setPhoneticDraft] = useState('');
+  const [candidateLineIndex, setCandidateLineIndex] = useState<number | null>(
+    null,
+  );
+  const [cantoneseCandidates, setCantoneseCandidates] = useState<
+    CantoneseCandidate[]
+  >([]);
+  const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const audioRetryCountRef = useRef(0);
   const audioRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1786,7 +1946,10 @@ function LyricsReader({
       lineIndex === index
         ? {
             ...current,
-            chinesePhonetic: readingToChinese(current.reading, nextCorrections),
+            chinesePhonetic:
+              song.language === 'yue'
+                ? jyutpingToChinese(current.reading, nextCorrections)
+                : readingToChinese(current.reading, nextCorrections),
             chinesePhoneticEdited: false,
             phoneticVersion: PHONETIC_RULES_VERSION,
           }
@@ -1828,7 +1991,11 @@ function LyricsReader({
                     phoneticVersion: undefined,
                   }
                 : {}),
-              ...(field === 'romaji' ? { romajiEdited: true } : {}),
+              ...(field === 'romaji'
+                ? song.language === 'yue'
+                  ? { reading: value, readingEdited: true, romajiEdited: true }
+                  : { romajiEdited: true }
+                : {}),
               ...(field === 'chinesePhonetic'
                 ? {
                     chinesePhoneticEdited: true,
@@ -1851,6 +2018,8 @@ function LyricsReader({
         line,
         corrections,
         resetManualEdits,
+        song.language,
+        cantoneseCorrections,
       );
       setDraftLines((current) =>
         current.map((currentLine, lineIndex) =>
@@ -1872,7 +2041,13 @@ function LyricsReader({
       const updated = await Promise.all(
         draftLines.map((line) =>
           !line.isBreak && line.phoneticVersion === undefined
-            ? regenerateLyricLine(line, corrections)
+            ? regenerateLyricLine(
+                line,
+                corrections,
+                false,
+                song.language,
+                cantoneseCorrections,
+              )
             : Promise.resolve(line),
         ),
       );
@@ -1902,7 +2077,13 @@ function LyricsReader({
           !line.isBreak &&
           line.phoneticVersion !== PHONETIC_RULES_VERSION &&
           !line.chinesePhoneticEdited
-            ? regenerateLyricLine(line, corrections)
+            ? regenerateLyricLine(
+                line,
+                corrections,
+                false,
+                song.language,
+                cantoneseCorrections,
+              )
             : Promise.resolve(line),
         ),
       );
@@ -1911,6 +2092,50 @@ function LyricsReader({
       setLineError(errorMessage(generationError));
     } finally {
       setIsUpdatingPhonetics(false);
+    }
+  }
+
+  async function openCantoneseCandidates(index: number) {
+    const line = draftLines[index];
+    if (!line || line.isBreak) return;
+    setCandidateLineIndex(index);
+    setCantoneseCandidates([]);
+    setIsLoadingCandidates(true);
+    try {
+      setCantoneseCandidates(
+        await getCantoneseCandidates(line.japanese, cantoneseCorrections),
+      );
+    } finally {
+      setIsLoadingCandidates(false);
+    }
+  }
+
+  async function chooseCantoneseCandidate(text: string, reading: string) {
+    if (candidateLineIndex === null) return;
+    const line = draftLines[candidateLineIndex];
+    if (!line || line.isBreak) return;
+    const nextCorrections = {
+      ...cantoneseCorrections,
+      [text]: reading,
+    };
+    setRegeneratingLine(candidateLineIndex);
+    try {
+      const regenerated = await regenerateLyricLine(
+        line,
+        corrections,
+        true,
+        'yue',
+        nextCorrections,
+      );
+      setDraftLines((current) =>
+        current.map((currentLine, index) =>
+          index === candidateLineIndex ? regenerated : currentLine,
+        ),
+      );
+      onSaveCantoneseCorrection(text, reading);
+      setCandidateLineIndex(null);
+    } finally {
+      setRegeneratingLine(null);
     }
   }
 
@@ -1960,6 +2185,7 @@ function LyricsReader({
       <div className="mb-4 flex flex-wrap justify-end gap-2">
         <PhoneticDictionaryDialog
           corrections={corrections}
+          language={song.language}
           onDelete={onDeleteCorrection}
           onSave={onSaveCorrection}
         />
@@ -2000,7 +2226,7 @@ function LyricsReader({
             >
               <Pencil aria-hidden="true" /> 编辑歌词
             </Button>
-            <CopyLyricsDialog lines={lines} />
+            <CopyLyricsDialog language={song.language} lines={lines} />
           </>
         )}
         {!isEditingLines ? (
@@ -2058,9 +2284,9 @@ function LyricsReader({
                   <track
                     default
                     kind="captions"
-                    label="日语歌词"
+                    label={song.language === 'yue' ? '粤语歌词' : '日语歌词'}
                     src={captionTrack}
-                    srcLang="ja"
+                    srcLang={song.language === 'yue' ? 'zh-HK' : 'ja'}
                   />
                 </audio>
               ) : (
@@ -2116,35 +2342,46 @@ function LyricsReader({
               {isEditingLines ? (
                 <div className="grid gap-3">
                   <label>
-                    <span className="sr-only">第 {index + 1} 行日语</span>
+                    <span className="sr-only">
+                      第 {index + 1} 行
+                      {song.language === 'yue' ? '粤语歌词' : '日语'}
+                    </span>
                     <Textarea
                       className="min-h-12 resize-y border-foreground/12 bg-background px-4 py-3 text-[1.2rem] leading-relaxed font-semibold text-foreground"
-                      lang="ja"
+                      lang={song.language === 'yue' ? 'zh-HK' : 'ja'}
                       onChange={(event) =>
                         updateLine(index, 'japanese', event.target.value)
                       }
                       value={line.japanese}
                     />
                   </label>
+                  {song.language === 'ja' ? (
+                    <label>
+                      <span className="sr-only">
+                        第 {index + 1} 行平假名读音
+                      </span>
+                      <Textarea
+                        className="min-h-11 resize-y border-foreground/12 bg-background px-4 py-2 text-base leading-relaxed text-foreground/72"
+                        lang="ja"
+                        onChange={(event) =>
+                          updateLine(index, 'reading', event.target.value)
+                        }
+                        placeholder="平假名读音"
+                        value={line.reading}
+                      />
+                    </label>
+                  ) : null}
                   <label>
-                    <span className="sr-only">第 {index + 1} 行平假名读音</span>
-                    <Textarea
-                      className="min-h-11 resize-y border-foreground/12 bg-background px-4 py-2 text-base leading-relaxed text-foreground/72"
-                      lang="ja"
-                      onChange={(event) =>
-                        updateLine(index, 'reading', event.target.value)
-                      }
-                      placeholder="平假名读音"
-                      value={line.reading}
-                    />
-                  </label>
-                  <label>
-                    <span className="sr-only">第 {index + 1} 行罗马音</span>
+                    <span className="sr-only">
+                      第 {index + 1} 行
+                      {song.language === 'yue' ? '粤拼' : '罗马音'}
+                    </span>
                     <Textarea
                       className="min-h-11 resize-y border-foreground/12 bg-background px-4 py-2 font-mono text-base leading-relaxed text-muted-foreground"
                       onChange={(event) =>
                         updateLine(index, 'romaji', event.target.value)
                       }
+                      placeholder={song.language === 'yue' ? '粤拼' : '罗马音'}
                       value={line.romaji}
                     />
                   </label>
@@ -2159,6 +2396,20 @@ function LyricsReader({
                     />
                   </label>
                   <div className="flex flex-wrap gap-2">
+                    {song.language === 'yue' ? (
+                      <Button
+                        className="h-9 rounded-full"
+                        disabled={isLoadingCandidates}
+                        onClick={() => void openCantoneseCandidates(index)}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        {isLoadingCandidates && candidateLineIndex === index
+                          ? '正在读取…'
+                          : '选择多音读法'}
+                      </Button>
+                    ) : null}
                     <Button
                       className="h-9 rounded-full"
                       disabled={regeneratingLine !== null}
@@ -2197,7 +2448,7 @@ function LyricsReader({
               ) : (
                 <>
                   <p
-                    lang="ja"
+                    lang={song.language === 'yue' ? 'zh-HK' : 'ja'}
                     className="text-[1.35rem] leading-relaxed font-semibold tracking-[0.015em] text-foreground sm:text-[1.6rem]"
                   >
                     {line.japanese}
@@ -2239,6 +2490,68 @@ function LyricsReader({
           ),
         )}
       </div>
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) setCandidateLineIndex(null);
+        }}
+        open={candidateLineIndex !== null}
+      >
+        <DialogContent className="max-w-lg bg-popover p-6 sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-xl">选择粤拼读音</DialogTitle>
+            <DialogDescription>
+              选择后会记住这个词语，下次自动使用相同读音。
+            </DialogDescription>
+          </DialogHeader>
+          {isLoadingCandidates ? (
+            <p className="py-6 text-center text-sm text-foreground/52">
+              正在读取候选读音…
+            </p>
+          ) : cantoneseCandidates.length ? (
+            <div className="max-h-[55vh] space-y-3 overflow-y-auto">
+              {cantoneseCandidates.map((candidate) => (
+                <section
+                  key={candidate.text}
+                  className="rounded-xl border border-foreground/10 bg-background p-3"
+                >
+                  <p className="mb-2 text-lg font-semibold" lang="zh-HK">
+                    {candidate.text}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {candidate.readings.map((reading) => (
+                      <Button
+                        key={reading}
+                        className="h-9 rounded-full font-mono"
+                        onClick={() =>
+                          void chooseCantoneseCandidate(candidate.text, reading)
+                        }
+                        size="sm"
+                        type="button"
+                        variant={
+                          cantoneseCorrections[candidate.text] === reading
+                            ? 'default'
+                            : 'outline'
+                        }
+                      >
+                        {reading}
+                      </Button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <p className="py-6 text-center text-sm text-foreground/52">
+              本句没有需要选择的多音读法。
+            </p>
+          )}
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="outline" />}>
+              关闭
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         onOpenChange={(open) => {
           if (!open) setEditingPhoneticIndex(null);

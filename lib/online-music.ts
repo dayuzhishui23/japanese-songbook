@@ -14,7 +14,7 @@ export type TimedLyricLine = {
 };
 
 const CREDIT_PREFIX =
-  /^(作词|作曲|编曲|制作人|监制|混音|母带|录音|吉他|贝斯|鼓|弦乐|和声|发行|词|曲)\s*[:：]/u;
+  /^(?:(作词|作曲|编曲|制作人|监制|混音|母带|录音|吉他|贝斯|鼓|弦乐|和声|发行|词|曲)\s*[:：]|(?:produced|production|keyboards?|programming|drums?|bass|guitars?|percussion|strings?|recorded|engineered|vocals?|mixed|mastered|arranged|conducted)\b|(?:op|sp)\s*[:：])/iu;
 
 export function parseTimedLrc(value: string): TimedLyricLine[] {
   if (!value || value.length > ONLINE_LYRICS_MAX_LENGTH) return [];

@@ -10,6 +10,7 @@ import {
   saveSongLibrary,
   serializeSongLibraryBackup,
   SONG_LIBRARY_STORAGE_KEY,
+  VERSION_3_SONG_LIBRARY_STORAGE_KEY,
 } from './storage';
 
 function fakeStorage(initial: Record<string, string> = {}) {
@@ -24,7 +25,7 @@ function fakeStorage(initial: Record<string, string> = {}) {
 
 void test('starts with an empty songbook', () => {
   const library = createDefaultLibrary();
-  assert.equal(library.version, 3);
+  assert.equal(library.version, 4);
   assert.equal(library.activeSongId, '');
   assert.deepEqual(library.songs, []);
 });
@@ -66,8 +67,10 @@ void test('migrates a version 2 song library and starts an empty correction dict
   });
 
   const library = loadSongLibrary(storage);
-  assert.equal(library.version, 3);
+  assert.equal(library.version, 4);
   assert.deepEqual(library.phoneticCorrections, {});
+  assert.deepEqual(library.cantonesePronunciationCorrections, {});
+  assert.equal(library.songs[0]?.language, 'ja');
   assert.equal(library.songs[0]?.title, '二曲目');
   assert.equal(library.songs[0]?.lines[0]?.chinesePhoneticEdited, true);
   assert.equal(library.songs[0]?.lines[0]?.readingEdited, true);
@@ -88,6 +91,7 @@ void test('saves and restores a multi-song library', () => {
     rawLyrics: 'かな',
     lines: [],
     updatedAt: '2026-09-07T00:00:00.000Z',
+    language: 'ja',
   });
   saveSongLibrary(storage, library);
   assert.deepEqual(loadSongLibrary(storage), library);
@@ -109,9 +113,42 @@ void test('saves and restores online song metadata', () => {
     source: 'netease',
     sourceId: '536622304',
     duration: 256,
+    language: 'ja',
   });
   saveSongLibrary(storage, library);
   assert.deepEqual(loadSongLibrary(storage), library);
+});
+
+void test('migrates version 3 songs without losing local records', () => {
+  const previous = {
+    version: 3,
+    activeSongId: 'saved-song',
+    phoneticCorrections: { きょう: 'Q哟—' },
+    songs: [
+      {
+        id: 'saved-song',
+        title: '旧歌本歌曲',
+        artist: '歌手',
+        officialUrl: '',
+        mvUrl: '',
+        rawLyrics: '今日',
+        lines: [],
+        updatedAt: '2026-09-07T00:00:00.000Z',
+      },
+    ],
+  };
+  const storage = fakeStorage({
+    [VERSION_3_SONG_LIBRARY_STORAGE_KEY]: JSON.stringify(previous),
+  });
+
+  const library = loadSongLibrary(storage);
+  assert.equal(library.version, 4);
+  assert.equal(library.activeSongId, 'saved-song');
+  assert.equal(library.songs[0]?.title, '旧歌本歌曲');
+  assert.equal(library.songs[0]?.language, 'ja');
+  assert.equal(library.phoneticCorrections.きょう, 'Q哟—');
+  assert.deepEqual(library.cantonesePronunciationCorrections, {});
+  assert.equal(storage.values.has(VERSION_3_SONG_LIBRARY_STORAGE_KEY), false);
 });
 
 void test('removes only the unused starter Lemon song', () => {
@@ -133,7 +170,7 @@ void test('removes only the unused starter Lemon song', () => {
     ],
   };
   const storage = fakeStorage({
-    [SONG_LIBRARY_STORAGE_KEY]: JSON.stringify(emptyLemon),
+    [VERSION_3_SONG_LIBRARY_STORAGE_KEY]: JSON.stringify(emptyLemon),
   });
   assert.deepEqual(loadSongLibrary(storage).songs, []);
 });
@@ -172,6 +209,7 @@ void test('exports and restores the complete local songbook', () => {
     mvUrl: '',
     rawLyrics: '今日',
     updatedAt: '2026-09-07T00:00:00.000Z',
+    language: 'ja',
     lines: [
       {
         japanese: '今日',

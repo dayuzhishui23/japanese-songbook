@@ -1,9 +1,11 @@
-import type { LyricLine } from './lyrics';
+import type { CantonesePronunciationCorrections } from './cantonese';
+import type { LyricLine, SongLanguage } from './lyrics';
 import { readingToChinese, type PhoneticCorrections } from './phonetic';
 
 export const LEGACY_LYRICS_STORAGE_KEY = 'lemon-lyrics-practice:v1';
 export const PREVIOUS_SONG_LIBRARY_STORAGE_KEY = 'japanese-songbook:v2';
-export const SONG_LIBRARY_STORAGE_KEY = 'japanese-songbook:v3';
+export const VERSION_3_SONG_LIBRARY_STORAGE_KEY = 'japanese-songbook:v3';
+export const SONG_LIBRARY_STORAGE_KEY = 'japanese-songbook:v4';
 
 export type SongRecord = {
   id: string;
@@ -17,13 +19,15 @@ export type SongRecord = {
   source?: 'netease';
   sourceId?: string;
   duration?: number;
+  language: SongLanguage;
 };
 
 export type SongLibrary = {
-  version: 3;
+  version: 4;
   activeSongId: string;
   songs: SongRecord[];
   phoneticCorrections: PhoneticCorrections;
+  cantonesePronunciationCorrections: CantonesePronunciationCorrections;
 };
 
 type SongLibraryBackup = {
@@ -65,9 +69,10 @@ function isLyricLine(value: unknown): value is LyricLine {
 
 export function createDefaultLibrary(): SongLibrary {
   return {
-    version: 3,
+    version: 4,
     activeSongId: '',
     phoneticCorrections: {},
+    cantonesePronunciationCorrections: {},
     songs: [],
   };
 }
@@ -109,7 +114,8 @@ function isSong(value: unknown): value is SongRecord {
     (song.source === undefined || song.source === 'netease') &&
     (song.sourceId === undefined || typeof song.sourceId === 'string') &&
     (song.duration === undefined ||
-      (typeof song.duration === 'number' && Number.isFinite(song.duration)))
+      (typeof song.duration === 'number' && Number.isFinite(song.duration))) &&
+    (song.language === 'ja' || song.language === 'yue')
   );
 }
 
@@ -129,11 +135,12 @@ export function isSongLibrary(value: unknown): value is SongLibrary {
   if (!value || typeof value !== 'object') return false;
   const library = value as Partial<SongLibrary>;
   return (
-    library.version === 3 &&
+    library.version === 4 &&
     typeof library.activeSongId === 'string' &&
     Array.isArray(library.songs) &&
     library.songs.every(isSong) &&
-    isCorrectionDictionary(library.phoneticCorrections)
+    isCorrectionDictionary(library.phoneticCorrections) &&
+    isCorrectionDictionary(library.cantonesePronunciationCorrections)
   );
 }
 
@@ -154,6 +161,37 @@ function migrateSong(song: SongRecord): SongRecord {
   return { ...song, lines: song.lines.map(migrateLine) };
 }
 
+function migrateVersion3Library(value: unknown): SongLibrary | null {
+  if (!value || typeof value !== 'object') return null;
+  const previous = value as {
+    version?: unknown;
+    activeSongId?: unknown;
+    songs?: unknown;
+    phoneticCorrections?: unknown;
+  };
+  if (
+    previous.version !== 3 ||
+    typeof previous.activeSongId !== 'string' ||
+    !Array.isArray(previous.songs) ||
+    !previous.songs.every((song) =>
+      isSong({ ...(song as Record<string, unknown>), language: 'ja' }),
+    ) ||
+    !isCorrectionDictionary(previous.phoneticCorrections)
+  ) {
+    return null;
+  }
+  return {
+    version: 4,
+    activeSongId: previous.activeSongId,
+    songs: previous.songs.map((song) => ({
+      ...(song as Omit<SongRecord, 'language'>),
+      language: 'ja' as const,
+    })),
+    phoneticCorrections: previous.phoneticCorrections,
+    cantonesePronunciationCorrections: {},
+  };
+}
+
 function migratePreviousLibrary(value: unknown): SongLibrary | null {
   if (!value || typeof value !== 'object') return null;
   const previous = value as {
@@ -165,15 +203,20 @@ function migratePreviousLibrary(value: unknown): SongLibrary | null {
     previous.version !== 2 ||
     typeof previous.activeSongId !== 'string' ||
     !Array.isArray(previous.songs) ||
-    !previous.songs.every(isSong)
+    !previous.songs.every((song) =>
+      isSong({ ...(song as Record<string, unknown>), language: 'ja' }),
+    )
   ) {
     return null;
   }
   return {
-    version: 3,
+    version: 4,
     activeSongId: previous.activeSongId,
-    songs: previous.songs.map(migrateSong),
+    songs: previous.songs.map((song) =>
+      migrateSong({ ...(song as SongRecord), language: 'ja' }),
+    ),
     phoneticCorrections: {},
+    cantonesePronunciationCorrections: {},
   };
 }
 
@@ -199,6 +242,7 @@ function migrateLegacy(value: unknown): SongLibrary | null {
     rawLyrics: legacy.rawLyrics,
     lines: (legacy.lines as LyricLine[]).map(migrateLine),
     updatedAt: typeof legacy.savedAt === 'string' ? legacy.savedAt : '',
+    language: 'ja',
   };
   return {
     ...createDefaultLibrary(),
@@ -216,6 +260,16 @@ export function loadSongLibrary(storage: StorageReader): SongLibrary {
         const library = removeEmptyStarterLemon(parsed);
         if (library !== parsed) saveSongLibrary(storage, library);
         return library;
+      }
+    }
+
+    const version3 = storage.getItem(VERSION_3_SONG_LIBRARY_STORAGE_KEY);
+    if (version3) {
+      const migrated = migrateVersion3Library(JSON.parse(version3));
+      if (migrated) {
+        saveSongLibrary(storage, migrated);
+        storage.removeItem(VERSION_3_SONG_LIBRARY_STORAGE_KEY);
+        return removeEmptyStarterLemon(migrated);
       }
     }
 
@@ -279,10 +333,12 @@ export function parseSongLibraryBackup(value: string): SongLibrary {
   if (
     backup.format !== 'japanese-songbook-backup' ||
     backup.version !== 1 ||
-    typeof backup.exportedAt !== 'string' ||
-    !isSongLibrary(backup.library)
+    typeof backup.exportedAt !== 'string'
   ) {
     throw new Error('备份格式不受支持或内容不完整。');
   }
-  return backup.library;
+  if (isSongLibrary(backup.library)) return backup.library;
+  const migrated = migrateVersion3Library(backup.library);
+  if (migrated) return migrated;
+  throw new Error('备份格式不受支持或内容不完整。');
 }

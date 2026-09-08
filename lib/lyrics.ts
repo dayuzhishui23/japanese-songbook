@@ -3,9 +3,17 @@ import {
   readingToChinese,
   type PhoneticCorrections,
 } from './phonetic';
+import {
+  cantoneseToJyutping,
+  jyutpingToChinese,
+  prepareCantoneseConverter,
+  type CantonesePronunciationCorrections,
+} from './cantonese';
 
 export const MAX_LYRICS_LENGTH = 20_000;
 export const PHONETIC_RULES_VERSION = 2;
+
+export type SongLanguage = 'ja' | 'yue';
 
 export type LyricLine = {
   japanese: string;
@@ -144,13 +152,16 @@ async function getKuroshiro(): Promise<KuroshiroInstance> {
   return kuroshiroPromise;
 }
 
-export async function prepareLyricsConverter(): Promise<void> {
-  await getKuroshiro();
+export async function prepareLyricsConverter(
+  language: SongLanguage = 'ja',
+): Promise<void> {
+  if (language === 'yue') await prepareCantoneseConverter();
+  else await getKuroshiro();
 }
 
 export function validateLyricsInput(rawLyrics: string): string {
   if (!rawLyrics.trim()) {
-    throw new Error('请先粘贴日语歌词。');
+    throw new Error('请先粘贴歌词。');
   }
 
   if (rawLyrics.length > MAX_LYRICS_LENGTH) {
@@ -188,12 +199,36 @@ async function convertJapaneseLine(
   };
 }
 
+async function convertCantoneseLine(
+  original: string,
+  corrections: PhoneticCorrections,
+  pronunciationCorrections: CantonesePronunciationCorrections,
+): Promise<LyricLine> {
+  const jyutping = await cantoneseToJyutping(
+    original,
+    pronunciationCorrections,
+  );
+  return {
+    japanese: original,
+    reading: jyutping,
+    romaji: jyutping,
+    chinesePhonetic: jyutpingToChinese(jyutping, corrections),
+    isBreak: false,
+    readingEdited: false,
+    romajiEdited: false,
+    chinesePhoneticEdited: false,
+    phoneticVersion: PHONETIC_RULES_VERSION,
+  };
+}
+
 export async function convertLyrics(
   rawLyrics: string,
   corrections: PhoneticCorrections = {},
+  language: SongLanguage = 'ja',
+  cantoneseCorrections: CantonesePronunciationCorrections = {},
 ): Promise<LyricLine[]> {
   const normalized = validateLyricsInput(rawLyrics);
-  await getKuroshiro();
+  await prepareLyricsConverter(language);
   const result: LyricLine[] = [];
 
   for (const sourceLine of normalized.split('\n')) {
@@ -208,7 +243,15 @@ export async function convertLyrics(
       continue;
     }
 
-    result.push(await convertJapaneseLine(sourceLine.trim(), corrections));
+    result.push(
+      language === 'yue'
+        ? await convertCantoneseLine(
+            sourceLine.trim(),
+            corrections,
+            cantoneseCorrections,
+          )
+        : await convertJapaneseLine(sourceLine.trim(), corrections),
+    );
   }
 
   return result;
@@ -218,11 +261,20 @@ export async function regenerateLyricLine(
   line: LyricLine,
   corrections: PhoneticCorrections = {},
   resetManualEdits = false,
+  language: SongLanguage = 'ja',
+  cantoneseCorrections: CantonesePronunciationCorrections = {},
 ): Promise<LyricLine> {
   if (line.isBreak) return line;
 
   if (resetManualEdits || !line.readingEdited) {
-    const generated = await convertJapaneseLine(line.japanese, corrections);
+    const generated =
+      language === 'yue'
+        ? await convertCantoneseLine(
+            line.japanese,
+            corrections,
+            cantoneseCorrections,
+          )
+        : await convertJapaneseLine(line.japanese, corrections);
     return {
       ...generated,
       startTime: line.startTime,
@@ -235,6 +287,19 @@ export async function regenerateLyricLine(
       romajiEdited: !resetManualEdits && Boolean(line.romajiEdited),
       chinesePhoneticEdited:
         !resetManualEdits && Boolean(line.chinesePhoneticEdited),
+    };
+  }
+
+  if (language === 'yue') {
+    const reading = line.reading.toLowerCase().replace(/\s+/gu, ' ').trim();
+    return {
+      ...line,
+      reading,
+      romaji: line.romajiEdited ? line.romaji : reading,
+      chinesePhonetic: line.chinesePhoneticEdited
+        ? line.chinesePhonetic
+        : jyutpingToChinese(reading, corrections),
+      phoneticVersion: PHONETIC_RULES_VERSION,
     };
   }
 
