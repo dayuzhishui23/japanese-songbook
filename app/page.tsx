@@ -89,6 +89,8 @@ type SongChoiceHandler = (
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024;
 const SITES_ORIGIN = 'https://lemon-lyrics-practice.dayuzhishui23.chatgpt.site';
+const HOME_ASCII_ART =
+  '  _  _              _       _           \n | || |    ___     | |     | |     ___  \n | __ |   / -_)    | |     | |    / _ \\ \n |_||_|   \\___|   _|_|_   _|_|_   \\___/ \n_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|\n"`-0-0-\'"`-0-0-\'"`-0-0-\'"`-0-0-\'"`-0-0-\'';
 
 function apiUrl(path: string): string {
   if (
@@ -582,15 +584,15 @@ function StartScreen({
   return (
     <section className="mx-auto flex min-h-[65vh] w-full max-w-2xl flex-col items-center pt-8 sm:pt-16">
       <div className="text-center">
-        <h2
-          className="text-3xl font-semibold tracking-[-0.035em] text-foreground sm:text-4xl"
-          lang="ja"
-        >
-          好きな曲を自由に選ぼう
-        </h2>
-        <p className="mt-2 text-sm tracking-[0.04em] text-foreground/48 sm:text-base">
-          Suki na kyoku o jiyū ni erabō
-        </p>
+        <h2 className="sr-only">Hello</h2>
+        <div className="w-full overflow-hidden py-2">
+          <pre
+            aria-hidden="true"
+            className="home-ascii-train mx-auto w-max max-w-none font-mono text-xs font-semibold leading-[1.15] text-foreground sm:text-base"
+          >
+            {HOME_ASCII_ART}
+          </pre>
+        </div>
       </div>
       <div className="mt-8 w-full">
         <OnlineSongSearchDialog

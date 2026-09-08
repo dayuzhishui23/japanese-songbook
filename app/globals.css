@@ -107,6 +107,15 @@
   }
 }
 
+@keyframes home-ascii-train-arrive {
+  from {
+    transform: translateX(calc(50vw + 50%));
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
 .song-view-enter {
   animation: song-view-in 220ms ease-out both;
 }
@@ -115,13 +124,19 @@
   animation: panel-in 180ms ease-out both;
 }
 
+.home-ascii-train {
+  animation: home-ascii-train-arrive 3.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
 
   .song-view-enter,
-  .panel-enter {
+  .panel-enter,
+  .home-ascii-train {
     animation: none;
   }
 }
