@@ -3,7 +3,8 @@ const cache = new Map<string, { urls: string[]; savedAt: number }>();
 
 function cors(request: Request): Record<string, string> {
   const origin = request.headers.get('origin') ?? '';
-  return origin === 'https://dayuzhishui23.github.io'
+  return origin === 'https://dayuzhishui23.github.io' ||
+    origin === 'https://uta.dayuzhishui23.cn'
     ? {
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Expose-Headers':

@@ -95,7 +95,8 @@ const HOME_ASCII_ART =
 function apiUrl(path: string): string {
   if (
     typeof window !== 'undefined' &&
-    window.location.hostname.endsWith('.github.io')
+    (window.location.hostname.endsWith('.github.io') ||
+      window.location.hostname === 'uta.dayuzhishui23.cn')
   ) {
     return `${SITES_ORIGIN}${path}`;
   }

@@ -8,10 +8,6 @@ const HEADERS = {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 };
 
-const CANONICAL_ORIGIN =
-  'https://lemon-lyrics-practice.dayuzhishui23.chatgpt.site';
-const CUSTOM_HOSTNAME = 'uta.dayuzhishui23.cn';
-
 const COVER_PATTERN =
   /\bcover\b|翻唱|翻自|カバー|歌ってみた|ピアノ|オルゴール|instrumental/iu;
 
@@ -41,7 +37,8 @@ function matchScore(song: OnlineSongResult, query: string): number {
 
 function cors(request: Request): Record<string, string> {
   const origin = request.headers.get('origin') ?? '';
-  return origin === 'https://dayuzhishui23.github.io'
+  return origin === 'https://dayuzhishui23.github.io' ||
+    origin === 'https://uta.dayuzhishui23.cn'
     ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' }
     : {};
 }
@@ -61,8 +58,7 @@ function searchQueries(query: string): string[] {
 }
 
 export async function GET(request: Request) {
-  const requestUrl = new URL(request.url);
-  const query = requestUrl.searchParams.get('q')?.trim() ?? '';
+  const query = new URL(request.url).searchParams.get('q')?.trim() ?? '';
   if (!query || query.length > 100) {
     return Response.json(
       { error: '请输入 1—100 个字符的歌名或歌手。', songs: [] },
@@ -71,25 +67,6 @@ export async function GET(request: Request) {
   }
 
   try {
-    if (requestUrl.hostname === CUSTOM_HOSTNAME) {
-      try {
-        const canonical = await fetch(
-          `${CANONICAL_ORIGIN}/api/search?q=${encodeURIComponent(query)}`,
-          { signal: AbortSignal.timeout(10_000) },
-        );
-        if (canonical.ok) {
-          const result = (await canonical.json()) as {
-            songs?: OnlineSongResult[];
-          };
-          if (result.songs?.length) {
-            return Response.json(result, { headers: cors(request) });
-          }
-        }
-      } catch {
-        // Continue with the local providers when the canonical origin is unavailable.
-      }
-    }
-
     const endpoints = ['search/get', 'search/get/web'];
     let data: {
       result?: {
