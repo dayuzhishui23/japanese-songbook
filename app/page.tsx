@@ -53,6 +53,7 @@ import {
   PHONETIC_RULES_VERSION,
   prepareLyricsConverter,
   regenerateLyricLine,
+  setLyricStartTime,
   type LyricLine,
   type LyricCopyTrack,
   type SongLanguage,
@@ -112,6 +113,12 @@ function nextDisplayMode(mode: LyricsDisplayMode): LyricsDisplayMode {
   if (mode === 'all') return 'annotation';
   if (mode === 'annotation') return 'original';
   return 'all';
+}
+
+function formatLyricTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = (seconds % 60).toFixed(1).padStart(4, '0');
+  return `${minutes}:${remainder}`;
 }
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024;
@@ -983,7 +990,7 @@ function FormField({
   required?: boolean;
 }) {
   return (
-    <label className="grid gap-2 text-sm font-medium text-foreground/72">
+    <label className="grid min-w-0 gap-2 text-sm font-medium text-foreground/72">
       <span>
         {label}
         {required ? <span className="ml-1 text-primary">*</span> : null}
@@ -1587,8 +1594,8 @@ function PhoneticDictionaryDialog({
       >
         校音词典{entries.length ? ` ${entries.length}` : ''}
       </DialogTrigger>
-      <DialogContent className="max-w-lg border-foreground/12 bg-card p-6 sm:max-w-lg">
-        <form onSubmit={submit}>
+      <DialogContent className="max-w-lg overflow-hidden border-foreground/12 bg-card p-6 sm:max-w-lg">
+        <form className="min-w-0" onSubmit={submit}>
           <DialogHeader>
             <DialogTitle className="text-xl text-foreground">
               本机校音词典
@@ -1597,10 +1604,10 @@ function PhoneticDictionaryDialog({
               相同读音再次出现时，优先使用你保存的写法。
             </DialogDescription>
           </DialogHeader>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="mt-5 grid min-w-0 gap-3 sm:grid-cols-2">
             <FormField label={language === 'yue' ? '粤拼读音' : '平假名读音'}>
               <Input
-                className="h-11 bg-background text-base"
+                className="h-11 min-w-0 bg-background text-base"
                 lang={language === 'yue' ? 'yue-Latn' : 'ja'}
                 onChange={(event) => setReading(event.target.value)}
                 placeholder={
@@ -1611,7 +1618,7 @@ function PhoneticDictionaryDialog({
             </FormField>
             <FormField label="中文跟唱音">
               <Input
-                className="h-11 bg-background text-base"
+                className="h-11 min-w-0 bg-background text-base"
                 onChange={(event) => setChinesePhonetic(event.target.value)}
                 placeholder="例如：Q哟—"
                 value={chinesePhonetic}
@@ -1624,13 +1631,13 @@ function PhoneticDictionaryDialog({
             </Button>
           </div>
           {entries.length ? (
-            <div className="mt-5 max-h-56 space-y-2 overflow-y-auto border-t border-foreground/10 pt-4">
+            <div className="mt-5 min-w-0 max-w-full space-y-2 overflow-x-hidden overflow-y-auto border-t border-foreground/10 pt-4">
               {entries.map(([savedReading, savedPhonetic]) => (
                 <div
                   key={savedReading}
-                  className="flex items-center gap-3 rounded-xl bg-background px-3 py-2"
+                  className="flex min-w-0 max-w-full items-start gap-3 rounded-xl bg-background px-3 py-2"
                 >
-                  <span className="min-w-0 flex-1 truncate text-sm text-foreground/72">
+                  <span className="min-w-0 flex-1 break-words text-sm leading-relaxed text-foreground/72 [overflow-wrap:anywhere]">
                     <span lang={language === 'yue' ? 'yue-Latn' : 'ja'}>
                       {savedReading}
                     </span>{' '}
@@ -2198,6 +2205,20 @@ function LyricsReader({
     void audio.play();
   }
 
+  function updateLineStartTime(index: number, seconds: number) {
+    const updated = setLyricStartTime(lines, index, Math.max(0, seconds));
+    if (updated === lines) return;
+    onSave(updated);
+    setActiveLineIndex(index);
+    if (isLinePractice) setPracticeLineIndex(index);
+  }
+
+  function setCurrentAudioTimeAsLineStart(index: number) {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.currentTime)) return;
+    updateLineStartTime(index, audio.currentTime);
+  }
+
   const readableLineCount = lines.filter((line) => !line.isBreak).length;
   const practiceLinePosition =
     practiceLineIndex === null
@@ -2396,7 +2417,10 @@ function LyricsReader({
                       linesRef.current,
                       event.currentTarget.currentTime,
                     );
-                    if (nextIndex !== null) setActiveLineIndex(nextIndex);
+                    if (nextIndex !== null) {
+                      setActiveLineIndex(nextIndex);
+                      if (isLinePractice) setPracticeLineIndex(nextIndex);
+                    }
                     if (
                       stopAt !== null &&
                       event.currentTarget.currentTime >= stopAt - 0.03
@@ -2630,18 +2654,62 @@ function LyricsReader({
                   ) : null}
                   {showAudioSync ? (
                     <div className="mt-4 border-t border-foreground/[0.07] pt-4">
-                      <Button
-                        className="h-10 rounded-full"
-                        disabled={
-                          !audioUrl || typeof line.startTime !== 'number'
-                        }
-                        onClick={() => playLine(index)}
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Play aria-hidden="true" /> 播放本句
-                      </Button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="mr-1 rounded-full bg-primary/[0.07] px-3 py-2 font-mono text-xs text-foreground/58">
+                          {typeof line.startTime === 'number'
+                            ? formatLyricTime(line.startTime)
+                            : '--:--.-'}
+                        </span>
+                        <Button
+                          className="h-10 rounded-full"
+                          disabled={
+                            !audioUrl || typeof line.startTime !== 'number'
+                          }
+                          onClick={() => playLine(index)}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Play aria-hidden="true" /> 播放本句
+                        </Button>
+                        <Button
+                          aria-label={`第 ${index + 1} 句提前 0.5 秒`}
+                          className="h-10 rounded-full"
+                          disabled={typeof line.startTime !== 'number'}
+                          onClick={() =>
+                            updateLineStartTime(index, line.startTime! - 0.5)
+                          }
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          提前 0.5 秒
+                        </Button>
+                        <Button
+                          aria-label={`第 ${index + 1} 句推迟 0.5 秒`}
+                          className="h-10 rounded-full"
+                          disabled={typeof line.startTime !== 'number'}
+                          onClick={() =>
+                            updateLineStartTime(index, line.startTime! + 0.5)
+                          }
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          推迟 0.5 秒
+                        </Button>
+                        <Button
+                          aria-label={`把当前播放时间设为第 ${index + 1} 句开始`}
+                          className="h-10 rounded-full"
+                          disabled={!audioUrl}
+                          onClick={() => setCurrentAudioTimeAsLineStart(index)}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          当前时间设为本句
+                        </Button>
+                      </div>
                     </div>
                   ) : null}
                 </>
