@@ -482,12 +482,28 @@ export default function Home() {
     const key = normalizeReadingKey(reading);
     const value = chinesePhonetic.trim();
     if (!key || !value) return;
+    const nextCorrections = {
+      ...library.phoneticCorrections,
+      [key]: value,
+    };
     persist({
       ...library,
-      phoneticCorrections: {
-        ...library.phoneticCorrections,
-        [key]: value,
-      },
+      phoneticCorrections: nextCorrections,
+      songs: library.songs.map((song) => ({
+        ...song,
+        lines: song.lines.map((line) =>
+          line.isBreak || line.chinesePhoneticEdited
+            ? line
+            : {
+                ...line,
+                chinesePhonetic:
+                  song.language === 'yue'
+                    ? jyutpingToChinese(line.reading, nextCorrections)
+                    : readingToChinese(line.reading, nextCorrections),
+                phoneticVersion: PHONETIC_RULES_VERSION,
+              },
+        ),
+      })),
     });
   }
 
