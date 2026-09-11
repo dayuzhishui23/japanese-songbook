@@ -36,6 +36,12 @@ void test('normalizes correction keys and applies saved word corrections', () =>
   );
 });
 
+void test('applies romaji corrections to matching sounds inside words', () => {
+  assert.equal(normalizeReadingKey(' Te '), 'te');
+  assert.equal(readingToChinese('たべて', { te: '爹' }), '塔贝爹');
+  assert.equal(readingToChinese('きょう', { KYOU: 'Q哟—' }), 'Q哟—');
+});
+
 void test('prefers an exact saved line correction', () => {
   assert.equal(
     readingToChinese('きょう は せかい', {

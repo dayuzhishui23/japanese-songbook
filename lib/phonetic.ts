@@ -1,3 +1,9 @@
+import Kuroshiro from 'kuroshiro';
+
+const KuroshiroRuntime = Kuroshiro.Util
+  ? Kuroshiro
+  : (Kuroshiro as unknown as { default: typeof Kuroshiro }).default;
+
 const KANA_ROWS = [
   ['あいうえお', '阿伊乌诶哦'],
   ['かきくけこ', '卡其库凯扣'],
@@ -84,7 +90,23 @@ const VOWEL_GROUPS = [
 export type PhoneticCorrections = Record<string, string>;
 
 export function normalizeReadingKey(reading: string): string {
-  return katakanaToHiragana(reading).replace(/\s+/gu, '').trim();
+  return katakanaToHiragana(reading)
+    .toLowerCase()
+    .replace(/\s+/gu, '')
+    .trim();
+}
+
+function isRomajiKey(value: string): boolean {
+  return /^[a-z]+(?:['-][a-z]+)*$/u.test(value);
+}
+
+function kanaToRomajiKey(value: string): string {
+  return normalizeReadingKey(
+    KuroshiroRuntime.Util.kanaToRomaji(
+      katakanaToHiragana(value),
+      'hepburn',
+    ),
+  );
 }
 
 function moraVowel(mora: string): string | undefined {
@@ -93,9 +115,15 @@ function moraVowel(mora: string): string | undefined {
   return ['a', 'i', 'u', 'e', 'o'][index];
 }
 
-function convertWord(word: string): string {
+function convertWord(
+  word: string,
+  romajiCorrections: PhoneticCorrections,
+): string {
   if (word.startsWith('こんにちは')) {
-    return `空尼奇哇${convertWord(word.slice('こんにちは'.length))}`;
+    return `空尼奇哇${convertWord(
+      word.slice('こんにちは'.length),
+      romajiCorrections,
+    )}`;
   }
 
   const output: string[] = [];
@@ -103,6 +131,25 @@ function convertWord(word: string): string {
 
   for (let index = 0; index < word.length; index += 1) {
     const character = word[index];
+
+    let correctedEnd = -1;
+    let correctedPhonetic = '';
+    for (let end = index + 1; end <= word.length; end += 1) {
+      const candidate = word.slice(index, end);
+      if (!/^[\u3040-\u30ffー]+$/u.test(candidate)) break;
+      const correction = romajiCorrections[kanaToRomajiKey(candidate)];
+      if (correction) {
+        correctedEnd = end;
+        correctedPhonetic = correction;
+      }
+    }
+    if (correctedEnd > index) {
+      output.push(correctedPhonetic);
+      previousMora = '';
+      index = correctedEnd - 1;
+      continue;
+    }
+
     if (character === 'っ') {
       output.push('·');
       previousMora = '';
@@ -162,17 +209,30 @@ export function readingToChinese(
   corrections: PhoneticCorrections = {},
 ): string {
   const normalized = katakanaToHiragana(reading);
-  const exactCorrection = corrections[normalizeReadingKey(normalized)];
+  const normalizedCorrections = Object.fromEntries(
+    Object.entries(corrections).map(([key, value]) => [
+      normalizeReadingKey(key),
+      value,
+    ]),
+  );
+  const romajiCorrections = Object.fromEntries(
+    Object.entries(normalizedCorrections).filter(([key]) => isRomajiKey(key)),
+  );
+  const exactCorrection =
+    normalizedCorrections[normalizeReadingKey(normalized)] ??
+    romajiCorrections[kanaToRomajiKey(normalized)];
   if (exactCorrection) return exactCorrection;
 
   const output = normalized.split(/(\s+)/u).map((part) => {
     if (/^\s+$/u.test(part)) return ' ';
-    const correction = corrections[normalizeReadingKey(part)];
+    const correction =
+      normalizedCorrections[normalizeReadingKey(part)] ??
+      romajiCorrections[kanaToRomajiKey(part)];
     if (correction) return correction;
     if (part === 'は') return '哇';
     if (part === 'へ') return '诶';
     if (part === 'を') return '哦';
-    return convertWord(part);
+    return convertWord(part, romajiCorrections);
   });
 
   return output

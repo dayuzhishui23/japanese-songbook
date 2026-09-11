@@ -1575,7 +1575,8 @@ function PhoneticDictionaryDialog({
     .filter(([savedReading]) =>
       language === 'yue'
         ? /[a-z]+[1-6]/iu.test(savedReading)
-        : /[\u3040-\u30ff]/u.test(savedReading),
+        : /[\u3040-\u30ff]/u.test(savedReading) ||
+          /^[a-z]+(?:['-][a-z]+)*$/iu.test(savedReading),
     )
     .sort(([a], [b]) => a.localeCompare(b, language === 'yue' ? 'en' : 'ja'));
 
@@ -1605,13 +1606,13 @@ function PhoneticDictionaryDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="mt-5 grid min-w-0 gap-3 sm:grid-cols-2">
-            <FormField label={language === 'yue' ? '粤拼读音' : '平假名读音'}>
+            <FormField label={language === 'yue' ? '粤拼读音' : '罗马音读音'}>
               <Input
                 className="h-11 min-w-0 bg-background text-base"
-                lang={language === 'yue' ? 'yue-Latn' : 'ja'}
+                lang={language === 'yue' ? 'yue-Latn' : 'en'}
                 onChange={(event) => setReading(event.target.value)}
                 placeholder={
-                  language === 'yue' ? '例如：zung1' : '例如：きょう'
+                  language === 'yue' ? '例如：zung1' : '例如：te'
                 }
                 value={reading}
               />
