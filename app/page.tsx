@@ -42,6 +42,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   activeLyricIndexAtTime,
   adjacentLyricIndex,
@@ -71,6 +72,7 @@ import {
   parseSongLibraryBackup,
   saveSongLibrary,
   serializeSongLibraryBackup,
+  type PhoneticEditHistoryEntry,
   type SongLibrary,
   type SongRecord,
 } from '@/lib/storage';
@@ -154,6 +156,33 @@ function createSongId(): string {
   return typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `song-${Date.now()}`;
+}
+
+function createHistoryId(): string {
+  return typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `edit-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function updateAutomaticPhonetics(
+  songs: SongRecord[],
+  corrections: Record<string, string>,
+): SongRecord[] {
+  return songs.map((song) => ({
+    ...song,
+    lines: song.lines.map((line) =>
+      line.isBreak || line.chinesePhoneticEdited
+        ? line
+        : {
+            ...line,
+            chinesePhonetic:
+              song.language === 'yue'
+                ? jyutpingToChinese(line.reading, corrections)
+                : readingToChinese(line.reading, corrections),
+            phoneticVersion: PHONETIC_RULES_VERSION,
+          },
+    ),
+  }));
 }
 
 export default function Home() {
@@ -408,12 +437,13 @@ export default function Home() {
     const songs = library.songs.filter((song) => song.id !== activeSong.id);
     const nextActive = songs[0] ?? null;
     persist({
-      version: 4,
+      version: 5,
       activeSongId: nextActive?.id ?? '',
       songs,
       phoneticCorrections: library.phoneticCorrections,
       cantonesePronunciationCorrections:
         library.cantonesePronunciationCorrections,
+      editHistory: library.editHistory,
     });
     setRawLyrics(nextActive?.rawLyrics ?? '');
     setIsEditing(!nextActive?.lines.length);
@@ -439,38 +469,41 @@ export default function Home() {
   function saveEditedLines(editedLines: LyricLine[]) {
     if (!activeSong) return;
     const updatedRawLyrics = lyricLinesToRawText(editedLines);
-    persist({
-      ...library,
-      songs: library.songs.map((song) =>
-        song.id === activeSong.id
-          ? {
-              ...song,
-              rawLyrics: updatedRawLyrics,
-              lines: editedLines,
-              updatedAt: new Date().toISOString(),
-            }
-          : song,
-      ),
+    const editedAt = new Date().toISOString();
+    const historyEntries = editedLines.flatMap((line, lineIndex) => {
+      const previousLine = activeSong.lines[lineIndex];
+      if (
+        line.isBreak ||
+        !line.chinesePhoneticEdited ||
+        line.chinesePhonetic === previousLine?.chinesePhonetic
+      ) {
+        return [];
+      }
+      return [
+        {
+          id: createHistoryId(),
+          songId: activeSong.id,
+          songTitle: activeSong.title,
+          artist: activeSong.artist,
+          lineIndex,
+          japanese: line.japanese,
+          reading: line.reading,
+          editedChinesePhonetic: line.chinesePhonetic,
+          editedAt,
+          language: activeSong.language,
+        } satisfies PhoneticEditHistoryEntry,
+      ];
     });
-    setRawLyrics(updatedRawLyrics);
-  }
-
-  function saveLinesAndCorrections(
-    editedLines: LyricLine[],
-    phoneticCorrections: Record<string, string>,
-  ) {
-    if (!activeSong) return;
-    const updatedRawLyrics = lyricLinesToRawText(editedLines);
     persist({
       ...library,
-      phoneticCorrections,
+      editHistory: [...historyEntries, ...library.editHistory],
       songs: library.songs.map((song) =>
         song.id === activeSong.id
           ? {
               ...song,
               rawLyrics: updatedRawLyrics,
               lines: editedLines,
-              updatedAt: new Date().toISOString(),
+              updatedAt: editedAt,
             }
           : song,
       ),
@@ -489,28 +522,86 @@ export default function Home() {
     persist({
       ...library,
       phoneticCorrections: nextCorrections,
-      songs: library.songs.map((song) => ({
-        ...song,
-        lines: song.lines.map((line) =>
-          line.isBreak || line.chinesePhoneticEdited
-            ? line
-            : {
-                ...line,
-                chinesePhonetic:
-                  song.language === 'yue'
-                    ? jyutpingToChinese(line.reading, nextCorrections)
-                    : readingToChinese(line.reading, nextCorrections),
-                phoneticVersion: PHONETIC_RULES_VERSION,
-              },
-        ),
-      })),
+      songs: updateAutomaticPhonetics(library.songs, nextCorrections),
     });
   }
 
   function deletePhoneticCorrection(reading: string) {
     const nextCorrections = { ...library.phoneticCorrections };
     delete nextCorrections[reading];
-    persist({ ...library, phoneticCorrections: nextCorrections });
+    persist({
+      ...library,
+      phoneticCorrections: nextCorrections,
+      songs: updateAutomaticPhonetics(library.songs, nextCorrections),
+    });
+  }
+
+  function clearPhoneticCorrections(readings: string[]) {
+    const nextCorrections = { ...library.phoneticCorrections };
+    readings.forEach((reading) => delete nextCorrections[reading]);
+    persist({
+      ...library,
+      phoneticCorrections: nextCorrections,
+      songs: updateAutomaticPhonetics(library.songs, nextCorrections),
+    });
+  }
+
+  function deleteEditHistory(id: string) {
+    persist({
+      ...library,
+      editHistory: library.editHistory.filter((entry) => entry.id !== id),
+    });
+  }
+
+  function applyEditHistory(id: string, mode: 'edited' | 'automatic') {
+    const entry = library.editHistory.find((item) => item.id === id);
+    if (!entry?.songId) return;
+    const targetSong = library.songs.find((song) => song.id === entry.songId);
+    if (!targetSong) return;
+    const exactLine = targetSong.lines[entry.lineIndex ?? -1];
+    const lineIndex =
+      exactLine &&
+      exactLine.japanese === entry.japanese &&
+      exactLine.reading === entry.reading
+        ? entry.lineIndex!
+        : targetSong.lines.findIndex(
+            (line) =>
+              !line.isBreak &&
+              line.japanese === entry.japanese &&
+              line.reading === entry.reading,
+          );
+    if (lineIndex < 0) return;
+    const updatedAt = new Date().toISOString();
+    const songs = library.songs.map((song) =>
+      song.id === targetSong.id
+        ? {
+            ...song,
+            updatedAt,
+            lines: song.lines.map((line, index) =>
+              index === lineIndex
+                ? {
+                    ...line,
+                    chinesePhonetic:
+                      mode === 'edited'
+                        ? entry.editedChinesePhonetic
+                        : song.language === 'yue'
+                          ? jyutpingToChinese(
+                              line.reading,
+                              library.phoneticCorrections,
+                            )
+                          : readingToChinese(
+                              line.reading,
+                              library.phoneticCorrections,
+                            ),
+                    chinesePhoneticEdited: mode === 'edited',
+                    phoneticVersion: PHONETIC_RULES_VERSION,
+                  }
+                : line,
+            ),
+          }
+        : song,
+    );
+    persist({ ...library, songs });
   }
 
   function saveCantonesePronunciationCorrection(text: string, reading: string) {
@@ -625,15 +716,19 @@ export default function Home() {
                     library.cantonesePronunciationCorrections
                   }
                   corrections={library.phoneticCorrections}
+                  editHistory={library.editHistory}
+                  songs={library.songs}
+                  onApplyHistory={applyEditHistory}
+                  onClearCorrections={clearPhoneticCorrections}
                   lines={activeSong.lines}
                   onDeleteCorrection={deletePhoneticCorrection}
+                  onDeleteHistory={deleteEditHistory}
                   onEdit={() => setIsEditing(true)}
                   onSave={saveEditedLines}
                   onSaveCorrection={savePhoneticCorrection}
                   onSaveCantoneseCorrection={
                     saveCantonesePronunciationCorrection
                   }
-                  onSaveWithCorrections={saveLinesAndCorrections}
                   song={activeSong}
                 />
               )}
@@ -1575,13 +1670,23 @@ function GenerationProgress({
 
 function PhoneticDictionaryDialog({
   corrections,
+  editHistory,
   language,
+  songs,
+  onApplyHistory,
+  onClear,
   onDelete,
+  onDeleteHistory,
   onSave,
 }: {
   corrections: Record<string, string>;
+  editHistory: PhoneticEditHistoryEntry[];
   language: SongLanguage;
+  songs: SongRecord[];
+  onApplyHistory: (id: string, mode: 'edited' | 'automatic') => void;
+  onClear: (readings: string[]) => void;
   onDelete: (reading: string) => void;
+  onDeleteHistory: (id: string) => void;
   onSave: (reading: string, chinesePhonetic: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -1595,6 +1700,26 @@ function PhoneticDictionaryDialog({
           /^[a-z]+(?:['-][a-z]+)*$/iu.test(savedReading),
     )
     .sort(([a], [b]) => a.localeCompare(b, language === 'yue' ? 'en' : 'ja'));
+  const historyEntries = editHistory.filter(
+    (entry) => entry.language === language,
+  );
+
+  function canRestore(entry: PhoneticEditHistoryEntry): boolean {
+    const song = songs.find((item) => item.id === entry.songId);
+    if (!song) return false;
+    const indexedLine = song.lines[entry.lineIndex ?? -1];
+    return Boolean(
+      (indexedLine &&
+        indexedLine.japanese === entry.japanese &&
+        indexedLine.reading === entry.reading) ||
+      song.lines.some(
+        (line) =>
+          !line.isBreak &&
+          line.japanese === entry.japanese &&
+          line.reading === entry.reading,
+      ),
+    );
+  }
 
   function submit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1609,71 +1734,196 @@ function PhoneticDictionaryDialog({
       <DialogTrigger
         render={<Button className="h-11 rounded-full px-4" variant="ghost" />}
       >
-        校音词典{entries.length ? ` ${entries.length}` : ''}
+        读音设置
       </DialogTrigger>
-      <DialogContent className="max-w-lg overflow-hidden border-foreground/12 bg-card p-6 sm:max-w-lg">
-        <form className="min-w-0" onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle className="text-xl text-foreground">
-              本机校音词典
-            </DialogTitle>
-            <DialogDescription>
-              相同读音再次出现时，优先使用你保存的写法。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-5 grid min-w-0 gap-3 sm:grid-cols-2">
-            <FormField label={language === 'yue' ? '粤拼读音' : '罗马音读音'}>
-              <Input
-                className="h-11 min-w-0 bg-background text-base"
-                lang={language === 'yue' ? 'yue-Latn' : 'en'}
-                onChange={(event) => setReading(event.target.value)}
-                placeholder={
-                  language === 'yue' ? '例如：zung1' : '例如：te'
-                }
-                value={reading}
-              />
-            </FormField>
-            <FormField label="中文跟唱音">
-              <Input
-                className="h-11 min-w-0 bg-background text-base"
-                onChange={(event) => setChinesePhonetic(event.target.value)}
-                placeholder="例如：Q哟—"
-                value={chinesePhonetic}
-              />
-            </FormField>
-          </div>
-          <div className="mt-4 flex justify-end">
-            <Button className="h-10 rounded-full" type="submit">
-              添加
-            </Button>
-          </div>
-          {entries.length ? (
-            <div className="mt-5 min-w-0 max-w-full space-y-2 overflow-x-hidden overflow-y-auto border-t border-foreground/10 pt-4">
-              {entries.map(([savedReading, savedPhonetic]) => (
-                <div
-                  key={savedReading}
-                  className="flex min-w-0 max-w-full items-start gap-3 rounded-xl bg-background px-3 py-2"
+      <DialogContent className="max-h-[86vh] max-w-lg overflow-hidden border-foreground/12 bg-card p-6 sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-xl text-foreground">
+            读音设置
+          </DialogTitle>
+          <DialogDescription>
+            短读音会应用到其他歌词，整句修改单独保存在历史中。
+          </DialogDescription>
+        </DialogHeader>
+        <Tabs className="min-h-0" defaultValue="rules">
+          <TabsList className="grid w-full grid-cols-2 rounded-xl bg-primary/[0.07] p-1">
+            <TabsTrigger className="rounded-lg" value="rules">
+              校音规则{entries.length ? ` ${entries.length}` : ''}
+            </TabsTrigger>
+            <TabsTrigger className="rounded-lg" value="history">
+              编辑历史{historyEntries.length ? ` ${historyEntries.length}` : ''}
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent className="min-h-0" value="rules">
+            <form className="min-w-0" onSubmit={submit}>
+              <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2">
+                <FormField
+                  label={language === 'yue' ? '粤拼读音' : '罗马音读音'}
                 >
-                  <span className="min-w-0 flex-1 break-words text-sm leading-relaxed text-foreground/72 [overflow-wrap:anywhere]">
-                    <span lang={language === 'yue' ? 'yue-Latn' : 'ja'}>
-                      {savedReading}
-                    </span>{' '}
-                    → {savedPhonetic}
-                  </span>
-                  <Button
-                    className="h-8 rounded-full"
-                    onClick={() => onDelete(savedReading)}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
+                  <Input
+                    className="h-11 min-w-0 bg-background text-base"
+                    lang={language === 'yue' ? 'yue-Latn' : 'en'}
+                    onChange={(event) => setReading(event.target.value)}
+                    placeholder={
+                      language === 'yue' ? '例如：zung1' : '例如：te'
+                    }
+                    value={reading}
+                  />
+                </FormField>
+                <FormField label="中文跟唱音">
+                  <Input
+                    className="h-11 min-w-0 bg-background text-base"
+                    onChange={(event) => setChinesePhonetic(event.target.value)}
+                    placeholder="例如：爹"
+                    value={chinesePhonetic}
+                  />
+                </FormField>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button className="h-10 rounded-full" type="submit">
+                  添加
+                </Button>
+              </div>
+            </form>
+            {entries.length ? (
+              <div className="mt-4 max-h-[42vh] min-w-0 max-w-full space-y-2 overflow-x-hidden overflow-y-auto border-t border-foreground/10 pt-4">
+                {entries.map(([savedReading, savedPhonetic]) => (
+                  <div
+                    key={savedReading}
+                    className="flex min-w-0 max-w-full items-start gap-3 rounded-xl bg-background px-3 py-2"
                   >
-                    删除
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </form>
+                    <span className="min-w-0 flex-1 break-words text-sm leading-relaxed text-foreground/72 [overflow-wrap:anywhere]">
+                      <span lang={language === 'yue' ? 'yue-Latn' : 'ja'}>
+                        {savedReading}
+                      </span>{' '}
+                      → {savedPhonetic}
+                    </span>
+                    <Button
+                      className="h-8 rounded-full"
+                      onClick={() => onDelete(savedReading)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      删除
+                    </Button>
+                  </div>
+                ))}
+                <AlertDialog>
+                  <AlertDialogTrigger
+                    render={
+                      <Button
+                        className="mt-2 h-9 rounded-full text-red-700"
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      />
+                    }
+                  >
+                    清空校音规则
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        清空当前语言的校音规则？
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        歌曲和编辑历史都会保留，自动音译将恢复默认读音。
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>取消</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => onClear(entries.map(([key]) => key))}
+                      >
+                        确认清空
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            ) : (
+              <p className="py-8 text-center text-sm text-foreground/48">
+                还没有校音规则。
+              </p>
+            )}
+          </TabsContent>
+          <TabsContent className="min-h-0" value="history">
+            {historyEntries.length ? (
+              <div className="mt-3 max-h-[55vh] space-y-3 overflow-x-hidden overflow-y-auto pr-1">
+                {historyEntries.map((entry) => {
+                  const restorable = canRestore(entry);
+                  return (
+                    <article
+                      className="min-w-0 rounded-xl bg-background p-3"
+                      key={entry.id}
+                    >
+                      <p className="text-xs text-foreground/48">
+                        {entry.songTitle}
+                        {entry.artist ? ` · ${entry.artist}` : ''}
+                        {entry.editedAt
+                          ? ` · ${new Date(entry.editedAt).toLocaleDateString('zh-CN')}`
+                          : ''}
+                      </p>
+                      <p
+                        className="mt-2 break-words text-sm text-foreground/72"
+                        lang={entry.language === 'yue' ? 'zh-HK' : 'ja'}
+                      >
+                        {entry.japanese}
+                      </p>
+                      <p className="mt-1 break-words text-base font-medium text-primary">
+                        {entry.editedChinesePhonetic}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {restorable ? (
+                          <>
+                            <Button
+                              className="h-8 rounded-full"
+                              onClick={() => onApplyHistory(entry.id, 'edited')}
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              恢复此次修改
+                            </Button>
+                            <Button
+                              className="h-8 rounded-full"
+                              onClick={() =>
+                                onApplyHistory(entry.id, 'automatic')
+                              }
+                              size="sm"
+                              type="button"
+                              variant="ghost"
+                            >
+                              恢复自动音译
+                            </Button>
+                          </>
+                        ) : (
+                          <span className="py-1 text-xs text-foreground/45">
+                            原歌曲或歌词已不存在
+                          </span>
+                        )}
+                        <Button
+                          className="ml-auto h-8 rounded-full"
+                          onClick={() => onDeleteHistory(entry.id)}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          删除记录
+                        </Button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="py-8 text-center text-sm text-foreground/48">
+                还没有整句修改记录。
+              </p>
+            )}
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
@@ -1855,28 +2105,33 @@ function CopyLyricsDialog({
 function LyricsReader({
   cantoneseCorrections,
   corrections,
+  editHistory,
   lines,
+  onApplyHistory,
+  onClearCorrections,
   onDeleteCorrection,
+  onDeleteHistory,
   onEdit,
   onSave,
   onSaveCorrection,
   onSaveCantoneseCorrection,
-  onSaveWithCorrections,
   song,
+  songs,
 }: {
   cantoneseCorrections: Record<string, string>;
   corrections: Record<string, string>;
+  editHistory: PhoneticEditHistoryEntry[];
   lines: LyricLine[];
+  onApplyHistory: (id: string, mode: 'edited' | 'automatic') => void;
+  onClearCorrections: (readings: string[]) => void;
   onDeleteCorrection: (reading: string) => void;
+  onDeleteHistory: (id: string) => void;
   onEdit: () => void;
   onSave: (lines: LyricLine[]) => void;
   onSaveCorrection: (reading: string, chinesePhonetic: string) => void;
   onSaveCantoneseCorrection: (text: string, reading: string) => void;
-  onSaveWithCorrections: (
-    lines: LyricLine[],
-    corrections: Record<string, string>,
-  ) => void;
   song: SongRecord;
+  songs: SongRecord[];
 }) {
   const [isEditingLines, setIsEditingLines] = useState(false);
   const [draftLines, setDraftLines] = useState<LyricLine[]>([]);
@@ -1985,7 +2240,6 @@ function LyricsReader({
     const line = lines[index];
     const value = phoneticDraft.trim();
     if (!line || line.isBreak || !value) return;
-    const key = normalizeReadingKey(line.reading);
     const updated = lines.map((current, lineIndex) =>
       lineIndex === index
         ? {
@@ -1995,33 +2249,27 @@ function LyricsReader({
           }
         : current,
     );
-    onSaveWithCorrections(
-      updated,
-      key ? { ...corrections, [key]: value } : corrections,
-    );
+    onSave(updated);
     setEditingPhoneticIndex(null);
   }
 
   function restorePhonetic(index: number) {
     const line = lines[index];
     if (!line || line.isBreak) return;
-    const key = normalizeReadingKey(line.reading);
-    const nextCorrections = { ...corrections };
-    if (key) delete nextCorrections[key];
     const updated = lines.map((current, lineIndex) =>
       lineIndex === index
         ? {
             ...current,
             chinesePhonetic:
               song.language === 'yue'
-                ? jyutpingToChinese(current.reading, nextCorrections)
-                : readingToChinese(current.reading, nextCorrections),
+                ? jyutpingToChinese(current.reading, corrections)
+                : readingToChinese(current.reading, corrections),
             chinesePhoneticEdited: false,
             phoneticVersion: PHONETIC_RULES_VERSION,
           }
         : current,
     );
-    onSaveWithCorrections(updated, nextCorrections);
+    onSave(updated);
     setEditingPhoneticIndex(null);
   }
 
@@ -2313,8 +2561,13 @@ function LyricsReader({
       <div className="mb-4 flex flex-wrap justify-end gap-2">
         <PhoneticDictionaryDialog
           corrections={corrections}
+          editHistory={editHistory}
           language={song.language}
+          songs={songs}
+          onApplyHistory={onApplyHistory}
+          onClear={onClearCorrections}
           onDelete={onDeleteCorrection}
+          onDeleteHistory={onDeleteHistory}
           onSave={onSaveCorrection}
         />
         {isEditingLines ? (
@@ -2627,19 +2880,6 @@ function LyricsReader({
                     >
                       恢复自动
                     </Button>
-                    {line.chinesePhoneticEdited && line.reading.trim() ? (
-                      <Button
-                        className="h-9 rounded-full"
-                        onClick={() =>
-                          onSaveCorrection(line.reading, line.chinesePhonetic)
-                        }
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        记住此写法
-                      </Button>
-                    ) : null}
                   </div>
                 </div>
               ) : (
@@ -2897,7 +3137,7 @@ function LyricsReader({
               }}
               type="button"
             >
-              保存并记住
+              保存修改
             </Button>
           </DialogFooter>
         </DialogContent>

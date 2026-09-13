@@ -11,6 +11,7 @@ import {
   serializeSongLibraryBackup,
   SONG_LIBRARY_STORAGE_KEY,
   VERSION_3_SONG_LIBRARY_STORAGE_KEY,
+  VERSION_4_SONG_LIBRARY_STORAGE_KEY,
 } from './storage';
 
 function fakeStorage(initial: Record<string, string> = {}) {
@@ -25,7 +26,8 @@ function fakeStorage(initial: Record<string, string> = {}) {
 
 void test('starts with an empty songbook', () => {
   const library = createDefaultLibrary();
-  assert.equal(library.version, 4);
+  assert.equal(library.version, 5);
+  assert.deepEqual(library.editHistory, []);
   assert.equal(library.activeSongId, '');
   assert.deepEqual(library.songs, []);
 });
@@ -67,9 +69,10 @@ void test('migrates a version 2 song library and starts an empty correction dict
   });
 
   const library = loadSongLibrary(storage);
-  assert.equal(library.version, 4);
+  assert.equal(library.version, 5);
   assert.deepEqual(library.phoneticCorrections, {});
   assert.deepEqual(library.cantonesePronunciationCorrections, {});
+  assert.deepEqual(library.editHistory, []);
   assert.equal(library.songs[0]?.language, 'ja');
   assert.equal(library.songs[0]?.title, '二曲目');
   assert.equal(library.songs[0]?.lines[0]?.chinesePhoneticEdited, true);
@@ -142,13 +145,64 @@ void test('migrates version 3 songs without losing local records', () => {
   });
 
   const library = loadSongLibrary(storage);
-  assert.equal(library.version, 4);
+  assert.equal(library.version, 5);
   assert.equal(library.activeSongId, 'saved-song');
   assert.equal(library.songs[0]?.title, '旧歌本歌曲');
   assert.equal(library.songs[0]?.language, 'ja');
   assert.equal(library.phoneticCorrections.きょう, 'Q哟—');
   assert.deepEqual(library.cantonesePronunciationCorrections, {});
+  assert.deepEqual(library.editHistory, []);
   assert.equal(storage.values.has(VERSION_3_SONG_LIBRARY_STORAGE_KEY), false);
+});
+
+void test('moves old sentence corrections into edit history and keeps short rules', () => {
+  const previous = {
+    version: 4,
+    activeSongId: 'saved-song',
+    phoneticCorrections: {
+      te: '爹',
+      きょう: 'Q哟—',
+      うれしくなって: '我改过的整句',
+    },
+    cantonesePronunciationCorrections: {},
+    songs: [
+      {
+        id: 'saved-song',
+        title: '测试歌曲',
+        artist: '歌手',
+        officialUrl: '',
+        mvUrl: '',
+        rawLyrics: 'うれしくなって',
+        lines: [
+          {
+            japanese: 'うれしくなって',
+            reading: 'うれしくなって',
+            romaji: 'ureshiku natte',
+            chinesePhonetic: '我改过的整句',
+            chinesePhoneticEdited: true,
+            isBreak: false,
+          },
+        ],
+        updatedAt: '2026-09-07T00:00:00.000Z',
+        language: 'ja',
+      },
+    ],
+  };
+  const storage = fakeStorage({
+    [VERSION_4_SONG_LIBRARY_STORAGE_KEY]: JSON.stringify(previous),
+  });
+
+  const library = loadSongLibrary(storage);
+  assert.equal(library.version, 5);
+  assert.deepEqual(library.phoneticCorrections, {
+    te: '爹',
+    きょう: 'Q哟—',
+  });
+  assert.equal(library.editHistory.length, 1);
+  assert.equal(library.editHistory[0]?.songTitle, '测试歌曲');
+  assert.equal(library.editHistory[0]?.editedChinesePhonetic, '我改过的整句');
+  assert.equal(storage.values.has(VERSION_4_SONG_LIBRARY_STORAGE_KEY), false);
+  assert.ok(storage.values.has(SONG_LIBRARY_STORAGE_KEY));
 });
 
 void test('removes only the unused starter Lemon song', () => {
